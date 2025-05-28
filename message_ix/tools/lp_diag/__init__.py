@@ -3,10 +3,30 @@
 # Written by Marek Makowski, ECE Program of IIASA, in March 2023.
 
 import math
+import re
 from collections import Counter
 
 import numpy as np
 import pandas as pd
+
+# Helper functions for MPS parsing with quoted names containing spaces
+_QUOTED_PATTERN = re.compile(r"'([^']*)'")
+
+
+def _preprocess_line_for_quoted_spaces(line_content: str) -> str:
+    """Replaces spaces within single-quoted strings with '___'."""
+
+    def replacer(match):
+        return f"'{match.group(1).replace(' ', '___')}'"
+
+    return _QUOTED_PATTERN.sub(replacer, line_content)
+
+
+def _clean_name(name_token: str) -> str:
+    """Cleans a name token by removing outer quotes and replacing '___' with spaces."""
+    if name_token.startswith("'") and name_token.endswith("'"):
+        return name_token.strip("'").replace("___", " ")
+    return name_token
 
 
 class LPdiag:
@@ -90,7 +110,9 @@ class LPdiag:
                 # print(f'line {line}')
                 if line[0] == "*" or len(line) == 0:  # skip commented and empty lines
                     continue
-                words = line.split()
+                # Preprocess line to handle spaces in quoted names
+                processed_line = _preprocess_line_for_quoted_spaces(line)
+                words = processed_line.split()
                 if line[0] == " ":  # continue reading the current MPS section
                     # columns/matrix (first here because most frequently used)
                     if n_section == 2:
@@ -129,7 +151,7 @@ class LPdiag:
                         )
 
                     # process the head of new section
-                    print(f"Next section found: {line} (line {n_line}).")
+                    print(f"Next section found: {processed_line} (line {n_line}).")
                     self.n_lines = n_line
                     # last_sect = n_section
                     n_section = self.next_sec(next_sect, words, sections)
@@ -161,8 +183,10 @@ class LPdiag:
                     # print(f"\tProblem name line {words[1:]}.")
                     if n_words == 2:
                         self.pname = words[1]  # store the problem name
+                        self.pname = _clean_name(words[1])  # store the problem name
                     else:
-                        self.pname = words[1:]  # store the problem name
+                        # Join words then clean, in case problem name itself has spaces (now handled by ___)
+                        self.pname = _clean_name("".join(words[1:]))
                     print(f"\tProblem name: {self.pname}.")
                 return n_exp  # n_sections equals to the expected: n_exp
             else:
@@ -249,7 +273,7 @@ class LPdiag:
             f"row declaration (line {n_line}) has {n_words} words instead of 2."
         )
         row_type = words[0]
-        row_name = words[1]
+        row_name = _clean_name(words[1])
         row_seq = len(self.row_name)
         assert row_type in row_types, f"unknown row type {row_type} (line {n_line})."
         assert row_name not in self.row_name, (
@@ -289,18 +313,21 @@ class LPdiag:
             3,
             5,
         ], f"matrix element (line {n_line}) has {n_words} words."
-        col_name = words[0]
-        if col_name != self.col_curr:  # new column
+        col_name_token = words[0]
+        if col_name_token != self.col_curr:  # new column
+            col_name = _clean_name(col_name_token)
             assert col_name not in self.col_name, (
                 f"duplicated column name: {col_name} (line {n_line})"
             )
             col_seq = len(self.col_name)
             self.col_name.update({col_name: col_seq})
             self.seq_col.update({col_seq: [col_name, 0.0, self.infty]})
-            self.col_curr = col_name
+            self.col_curr = col_name_token  # Keep self.col_curr as the token from words for direct comparison
         else:
+            col_name = _clean_name(col_name_token)
             col_seq = self.col_name.get(col_name)
-        row_name = words[1]
+        row_name_token = words[1]
+        row_name = _clean_name(row_name_token)
         row_seq = self.row_name.get(row_name)
         assert row_seq is not None, f"unknown row name {row_name} (line {n_line})."
         try:
@@ -334,7 +361,8 @@ class LPdiag:
                 f"line {n_line}) has {n_words} words, five words needed for defining "
                 "second element in the same MPS line."
             )
-            row_name = words[3]
+            row_name_token = words[3]
+            row_name = _clean_name(row_name_token)
             row_seq = self.row_name.get(row_name)
             assert row_seq is not None, f"unknown row name {row_name} (line {n_line})."
             try:
@@ -389,7 +417,8 @@ class LPdiag:
             assert words[0] == self.rhs_id, (
                 f"RHS id {words[0]}, line {n_line} differ from expected: {self.rhs_id}."
             )
-        row_name = words[pos_name]
+        row_name_token = words[pos_name]
+        row_name = _clean_name(row_name_token)
         row_seq = self.row_name.get(row_name)
         assert row_seq is not None, f"unknown RHS row-name {row_name} (line {n_line})."
         try:
@@ -403,7 +432,8 @@ class LPdiag:
         self.row_att(row_seq, row_name, row_type, "rhs", val)
         self.n_rhs += 1
         if n_words == n_req_wrd[1]:  # second pair of rhs defined
-            row_name = words[pos_name + 2]
+            row_name_token = words[pos_name + 2]
+            row_name = _clean_name(row_name_token)
             row_seq = self.row_name.get(row_name)
             assert row_seq is not None, (
                 f"unknown RHS row-name {row_name} (line {n_line})."
@@ -461,7 +491,8 @@ class LPdiag:
                 f"Ranges id {words[0]}, line {n_line} differ from"
                 f" expected: {self.range_id}."
             )
-        row_name = words[pos_name]
+        row_name_token = words[pos_name]
+        row_name = _clean_name(row_name_token)
         row_seq = self.row_name.get(row_name)
         assert row_seq is not None, (
             f"unknown range row-name {row_name} (line {n_line})."
@@ -477,7 +508,8 @@ class LPdiag:
         self.row_att(row_seq, row_name, row_type, "ranges", val)
         self.n_ranges += 1
         if n_words == n_req_wrd[1]:  # second pair of ranges defined
-            row_name = words[pos_name + 2]
+            row_name_token = words[pos_name + 2]
+            row_name = _clean_name(row_name_token)
             row_seq = self.row_name.get(row_name)
             assert row_seq is not None, (
                 f"unknown ranges row-name {row_name} (line {n_line})."
@@ -549,7 +581,8 @@ class LPdiag:
                 f"BOUNDS id {words[1]}, line {n_line} differ from "
                 f"expected id: {self.bnd_id}."
             )
-        col_name = words[pos_name]
+        col_name_token = words[pos_name]
+        col_name = _clean_name(col_name_token)
         col_seq = self.col_name.get(col_name)
         assert col_seq is not None, (
             f"unknown BOUNDS col-name {col_name} (line {n_line})."
@@ -751,7 +784,8 @@ class LPdiag:
                     f" {self.mat.loc[self.mat['log'] == val]['log'].count()}"
                 )
 
-    def locate_outliers(self, small: bool = True, thresh: int = -7, max_rec: int = 500):
+    def locate_outliers(
+        self, small: bool = True, thresh: int = -7, max_rec: int = 1414):
         """Locations of outliers, i.e., elements having small/large coefficient values.
 
         Locations of outliers (in the term of the matrix coefficient values). The
