@@ -238,21 +238,26 @@ def make_scaler(path, scen, bounds=4, steps=1, display_range=True):
                                 + stats_for_scaling.loc[finite_mask, "max_log"]
                             ) / 2.0
 
-                        # Convert to integer log exponent
-                        mid_logs = np.int32(mid_logs)
-
                         # Exclude objective row/column from having their mid_log changed from 0
+                        # This should be done WHILE mid_logs is still a float Series with its proper index
                         if s_entity == "row":
                             obj_row_seq = current_lp.gf_seq
                             if obj_row_seq in mid_logs.index:
-                                mid_logs.loc[obj_row_seq] = 0
+                                mid_logs.loc[obj_row_seq] = (
+                                    0.0  # Set to float 0.0 before int conversion
+                                )
                         else:  # s_entity == "col"
                             constobj_seq_id = current_lp.col_name.get("constobj")
                             if (
                                 constobj_seq_id is not None
                                 and constobj_seq_id in mid_logs.index
                             ):
-                                mid_logs.loc[constobj_seq_id] = 0
+                                mid_logs.loc[constobj_seq_id] = (
+                                    0.0  # Set to float 0.0 before int conversion
+                                )
+
+                        # Convert to integer log exponent (as a Series)
+                        mid_logs = mid_logs.astype(np.int32)
 
                         # Calculate scaling factors for the current step
                         if s_entity == "row":
@@ -359,9 +364,7 @@ def make_scaler(path, scen, bounds=4, steps=1, display_range=True):
             os.getcwd()
         )  # Or a more specific base like scen.model_path if available
         # This relative pathing is fragile.
-        scaler_dir = os.path.join(current_directory, "model", "scaler")
-        if not os.path.exists(scaler_dir):
-            os.makedirs(scaler_dir, exist_ok=True)
+        scaler_dir = os.path.join(current_directory)
         scaler_gms_path = os.path.join(scaler_dir, f"{gams_file_name}.gms")
     except Exception as e:
         print(
