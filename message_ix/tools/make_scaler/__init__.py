@@ -8,10 +8,6 @@ import re
 
 from message_ix.tools.lp_diag import LPdiag
 
-lp = LPdiag()
-mp = ixmp.Platform()
-
-
 def filter_df(data, bounds):
     """Extracts matrix elements with coefficient outliers.
 
@@ -99,15 +95,15 @@ def show_range(data, pretext):
     )
 
 
-def get_scaler_args(scenario_ref=None, model="", scenario=""):
+def get_scaler_args(scenario_ref_model = None, scenario_ref_scenario = None, model="", scenario=""):
     """
     Function to make gams argument for scaling
 
     """
-    if not scenario_ref:
+    if not scenario_ref_model:
         strings = ["MsgScaler", model, scenario]
     else:
-        strings = ["MsgScaler", scenario_ref.model, scenario_ref.scenario]
+        strings = ["MsgScaler", scenario_ref_model, scenario_ref_scenario]
 
     file_name = "_".join(s.replace(" ", "_") for s in strings)
 
@@ -130,7 +126,7 @@ def return_spaces_in_quotes(match):
     inner_text = match.group(1)
     return f"'{inner_text.replace('---', ' ')}'"
 
-def make_scaler(path, scen, bounds=4, steps=1, display_range=True):
+def make_scaler(path, scen_model, scen_scenario, bounds=4, steps=1, display_range=True):
     """
     Process to generate prescale_args in GAMS to improve
     matrix coefficients.
@@ -173,7 +169,7 @@ def make_scaler(path, scen, bounds=4, steps=1, display_range=True):
             # Replace spaces inside single-quoted substrings
             new_line = quoted_pattern.sub(replace_spaces_in_quotes, line)
             f.write(new_line)
-
+    lp = LPdiag()
     # Start making the scaler
     lp.read_mps(path)
 
@@ -266,7 +262,7 @@ def make_scaler(path, scen, bounds=4, steps=1, display_range=True):
     current_directory = os.getcwd()
     two_levels_up = os.path.abspath(os.path.join(current_directory, "../.."))
 
-    scaler_gms_name = [scen.model, scen.scenario]
+    scaler_gms_name = [scen_model, scen_scenario]
     scaler_gms_name = "_".join(s.replace(" ", "_") for s in scaler_gms_name)
 
     scaler_gms_dir = os.path.join(
