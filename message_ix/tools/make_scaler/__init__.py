@@ -1,12 +1,13 @@
 import os
 
-import ixmp
+
 import numpy as np
 import pandas as pd
 import re
 
 
 from message_ix.tools.lp_diag import LPdiag
+
 
 def filter_df(data, bounds):
     """Extracts matrix elements with coefficient outliers.
@@ -95,7 +96,9 @@ def show_range(data, pretext):
     )
 
 
-def get_scaler_args(scenario_ref_model = None, scenario_ref_scenario = None, model="", scenario=""):
+def get_scaler_args(
+    scenario_ref_model=None, scenario_ref_scenario=None, model="", scenario=""
+):
     """
     Function to make gams argument for scaling
 
@@ -106,11 +109,7 @@ def get_scaler_args(scenario_ref_model = None, scenario_ref_scenario = None, mod
         strings = ["MsgScaler", scenario_ref_model, scenario_ref_scenario]
 
     file_name = "_".join(s.replace(" ", "_") for s in strings)
-
-    current_directory = os.getcwd()
-    two_levels_up = os.path.abspath(os.path.join(current_directory, "../.."))
-
-    prescale_args_dir = os.path.join(two_levels_up, f"model/scaler/{file_name}.gms")
+    prescale_args_dir = os.path.join(f"model/scaler/{file_name}.gms")
 
     if os.path.exists(prescale_args_dir):
         return f"--scaler={file_name}"
@@ -118,13 +117,16 @@ def get_scaler_args(scenario_ref_model = None, scenario_ref_scenario = None, mod
         print("The referred scenario doesn't have prescaler file!")
         print("Please use make_prescaler() function to create one")
 
+
 def replace_spaces_in_quotes(match):
     inner_text = match.group(1)
     return f"'{inner_text.replace(' ', '___')}'"
 
+
 def return_spaces_in_quotes(match):
     inner_text = match.group(1)
     return f"'{inner_text.replace('---', ' ')}'"
+
 
 def make_scaler(path, scen_model, scen_scenario, bounds=4, steps=1, display_range=True):
     """
@@ -161,7 +163,7 @@ def make_scaler(path, scen_model, scen_scenario, bounds=4, steps=1, display_rang
     # Aligning mps file content with lp_diag naming formats
     quoted_pattern = re.compile(r"'([^']*)'")
 
-    with open(path, 'r+') as f:
+    with open(path, "r+") as f:
         old = f.readlines()  # Pull the file contents to a list
         f.seek(0)  # Jump to start, so we overwrite instead of appending
         f.truncate()  # Clear the file before writing
@@ -245,7 +247,7 @@ def make_scaler(path, scen_model, scen_scenario, bounds=4, steps=1, display_rang
                 k_ = k.replace("(", ".scale('")
                 k_ = k_.replace(")", "')")
                 k_ = k_.replace(",", "','")
-            k_.replace("___"," ")
+            k_.replace("___", " ")
             scaler_dict.update({k_: v})
 
     # add this line to active scaling option
