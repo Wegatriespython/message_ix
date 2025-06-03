@@ -244,10 +244,15 @@ def make_scaler(path, scen_model, scen_scenario, bounds=4, steps=1, display_rang
             elif k == "constobj":
                 k_ = "constobj.scale"
             else:
-                k_ = k.replace("(", ".scale('")
-                k_ = k_.replace(")", "')")
-                k_ = k_.replace(",", "','")
-            k_.replace("___", " ")
+                # Check if this is a multi-dimensional constraint (has parentheses)
+                if "(" in k and ")" in k:
+                    # For multi-dimensional constraints, just add .scale after the name
+                    # The quotes are already in the MPS file data, don't add more!
+                    k_ = k.replace("(", ".scale(")
+                else:
+                    # Simple constraint name without dimensions
+                    k_ = k + ".scale"
+            # Note: We do NOT replace ___ with spaces anymore to avoid breaking quoted strings
             scaler_dict.update({k_: v})
 
     # add this line to active scaling option

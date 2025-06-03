@@ -3,13 +3,14 @@ Optimized implementations for make_scaler helper functions and an optimized make
 
 These functions aim to improve performance while preserving GAMS syntax generation logic.
 """
+
 import os
 import re
 
 import numpy as np
 import pandas as pd
 
-from . import replace_spaces_in_quotes, return_spaces_in_quotes, get_scaler_args
+from . import replace_spaces_in_quotes, return_spaces_in_qutes, get_scaler_args
 from message_ix.tools.lp_diag import LPdiag
 
 
@@ -82,8 +83,7 @@ def make_scaler(path, scen_model, scen_scenario, bounds=4, steps=1, display_rang
 
             objective_ix = "_obj" if s == "row" else "constobj"
             levels_solv = [
-                lvl for lvl in get_lvl_ix(log_absmatrix_solv, s)
-                if lvl != objective_ix
+                lvl for lvl in get_lvl_ix(log_absmatrix_solv, s) if lvl != objective_ix
             ]
 
             if levels_solv:
@@ -91,23 +91,22 @@ def make_scaler(path, scen_model, scen_scenario, bounds=4, steps=1, display_rang
                 bounds_df = grp.agg(["min", "max"]).astype(int)
                 mids = ((bounds_df["min"] + bounds_df["max"]) / 2).astype(int)
                 exps = mids if s == "row" else -mids
-                SFs = (10.0 ** exps).to_dict()
+                SFs = (10.0**exps).to_dict()
                 SFs = {k: v for k, v in SFs.items() if k in levels_solv}
             else:
                 SFs = {}
 
             return_index = list(set(get_lvl_ix(log_absmatrix, s)))
-            multiplier = 1 if counter == 0 else scalers[s].reindex(return_index).fillna(1)
+            multiplier = (
+                1 if counter == 0 else scalers[s].reindex(return_index).fillna(1)
+            )
 
             step_scaler = pd.DataFrame(data=SFs, index=["val"]).transpose()
             step_scaler.index.name = s
             step_scaler = step_scaler.reindex(return_index).fillna(1)
 
             scalers[s] = step_scaler.mul(multiplier)
-            matrix = (
-                matrix.div(step_scaler) if s == "row"
-                else matrix.mul(step_scaler)
-            )
+            matrix = matrix.div(step_scaler) if s == "row" else matrix.mul(step_scaler)
 
         if display_range:
             show_range(matrix, f"Scaled range step {counter + 1}")
@@ -122,9 +121,15 @@ def make_scaler(path, scen_model, scen_scenario, bounds=4, steps=1, display_rang
             elif k == "constobj":
                 k_ = "constobj.scale"
             else:
-                k_ = k.replace("(", ".scale('")
-                k_ = k_.replace(")", "')").replace(",", "','")
-            k_ = k_.replace("___", " ")
+                # Check if this is a multi-dimensional constraint (has parentheses)
+                if "(" in k and ")" in k:
+                    # For multi-dimensional constraints, just add .scale after the name
+                    # The quotes are already in the MPS file data, don't add more!
+                    k_ = k.replace("(", ".scale(")
+                else:
+                    # Simple constraint name without dimensions
+                    k_ = k + ".scale"
+            # Note: We do NOT replace ___ with spaces anymore to avoid breaking quoted strings
             scaler_dict[k_] = v
 
     scaler_dict["MESSAGE_LP.scaleopt"] = 1
@@ -134,12 +139,9 @@ def make_scaler(path, scen_model, scen_scenario, bounds=4, steps=1, display_rang
     scaler_list = [f"{k}={v};" for k, v in scaler_dict.items()]
     scaler_args_txt = "\n".join(scaler_list)
 
-
     scaler_gms_name = "_".join(s.replace(" ", "_") for s in [scen_model, scen_scenario])
-    scaler_gms_dir = os.path.join(
-        f"model/scaler/MsgScaler_{scaler_gms_name}.gms"
-    )
-    os.makedirs(os.path.dirname(scaler_gms_dir), exist_ok = True)
+    scaler_gms_dir = os.path.join(f"model/scaler/MsgScaler_{scaler_gms_name}.gms")
+    os.makedirs(os.path.dirname(scaler_gms_dir), exist_ok=True)
     with open(scaler_gms_dir, "w") as txtfile:
         txtfile.write(scaler_args_txt)
 
