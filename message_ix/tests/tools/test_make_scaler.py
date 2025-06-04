@@ -34,6 +34,72 @@ from message_ix.tools.make_scaler import (
 # Optimized functions are now integrated into the main module
 
 
+def test_parallel_vs_standard_implementations(test_data_path):
+    """Test that parallel and standard implementations produce identical results."""
+    # Use permanent test data
+    mps_file = test_data_path / "make_scaler" / "baseline_sample.mps"
+    assert mps_file.exists(), f"Test data not found: {mps_file}"
+
+    with tempfile.TemporaryDirectory():
+        # Test standard implementation
+        result_standard = make_scaler(
+            path=str(mps_file),
+            scen_model="baseline_sample",
+            scen_scenario="standard_test",
+            bounds=2,
+            steps=1,
+            display_range=False,
+            mode="standard",
+        )
+
+        # Test parallel implementation
+        result_parallel = make_scaler(
+            path=str(mps_file),
+            scen_model="baseline_sample",
+            scen_scenario="parallel_test",
+            bounds=2,
+            steps=1,
+            display_range=False,
+            mode="parallel",
+        )
+
+        # Compare results
+        assert isinstance(result_standard, pd.DataFrame)
+        assert isinstance(result_parallel, pd.DataFrame)
+
+        # Results should have same shape and contain same keys
+        assert result_standard.shape == result_parallel.shape
+        assert set(result_standard.index) == set(result_parallel.index)
+
+        # Values should be identical (or very close due to floating point)
+        for idx in result_standard.index:
+            std_val = result_standard.loc[idx, "val"]
+            par_val = result_parallel.loc[idx, "val"]
+            assert abs(std_val - par_val) < 1e-10, (
+                f"Values differ for {idx}: {std_val} vs {par_val}"
+            )
+
+        print("✓ Parallel and standard implementations produce identical results")
+
+
+def test_mode_dispatch():
+    """Test that the mode parameter correctly dispatches to implementations."""
+    # Test that make_scaler accepts different mode values
+    from message_ix.tools.make_scaler import make_scaler
+
+    # These should not raise exceptions (we'll test with minimal data later)
+    # For now, just check the function signature and error handling
+
+    # Test invalid mode raises ValueError
+    with pytest.raises(ValueError, match="Invalid mode"):
+        make_scaler(
+            path="dummy_path",
+            scen_model="test",
+            scen_scenario="test",
+            mode="invalid_mode",
+        )
+
+
 @pytest.mark.parametrize("func", [filter_df])
 def test_filter_df_int_bounds(func):
     """Test filter_df with integer bounds parameter."""
@@ -190,8 +256,8 @@ def _validate_scale_parameters(line_num, line, left_part):
     return errors
 
 
-@pytest.mark.parametrize("scaler_fn", [make_scaler])
-def test_sample_syntax_validation(test_data_path, scaler_fn):
+@pytest.mark.parametrize("mode", ["standard", "parallel"])
+def test_sample_syntax_validation(test_data_path, mode):
     """Test make_scaler GAMS syntax generation with baseline.mps sample data.
 
     This test uses a permanent sample of 1000 constraints from baseline.mps to validate:
@@ -213,13 +279,14 @@ def test_sample_syntax_validation(test_data_path, scaler_fn):
     # Create temporary directory for scaler output
     with tempfile.TemporaryDirectory():
         # Run make_scaler with the baseline sample
-        scaler_df = scaler_fn(
+        scaler_df = make_scaler(
             path=str(mps_file),
             scen_model="baseline_sample",
-            scen_scenario="syntax_test",
+            scen_scenario=f"syntax_test_{mode}",
             bounds=2,  # Use reasonable bounds to get subset of constraints
             steps=1,
             display_range=False,
+            mode=mode,
         )
 
         # Verify DataFrame structure
@@ -233,7 +300,7 @@ def test_sample_syntax_validation(test_data_path, scaler_fn):
             ),
             "model",
             "scaler",
-            "MsgScaler_baseline_sample_syntax_test.gms",
+            f"MsgScaler_baseline_sample_syntax_test_{mode}.gms",
         )
 
         assert os.path.exists(scaler_file_path), (
