@@ -10,7 +10,7 @@ import re
 import numpy as np
 import pandas as pd
 
-from . import replace_spaces_in_quotes, return_spaces_in_qutes, get_scaler_args
+from . import replace_spaces_in_quotes, return_spaces_in_quotes, get_scaler_args
 from message_ix.tools.lp_diag import LPdiag
 
 
@@ -123,9 +123,21 @@ def make_scaler(path, scen_model, scen_scenario, bounds=4, steps=1, display_rang
             else:
                 # Check if this is a multi-dimensional constraint (has parentheses)
                 if "(" in k and ")" in k:
-                    # For multi-dimensional constraints, just add .scale after the name
-                    # The quotes are already in the MPS file data, don't add more!
-                    k_ = k.replace("(", ".scale(")
+                    # Extract constraint name and parameters
+                    constraint_name = k[:k.index("(")]
+                    params = k[k.index("(")+1:k.index(")")].split(",")
+                    # Quote each parameter only if not already quoted
+                    quoted_params = []
+                    for p in params:
+                        p = p.strip()
+                        if p.startswith("'") and p.endswith("'"):
+                            # Already quoted, use as-is
+                            quoted_params.append(p)
+                        else:
+                            # Not quoted, add quotes
+                            quoted_params.append(f"'{p}'")
+                    # Reconstruct with quotes
+                    k_ = f"{constraint_name}.scale({','.join(quoted_params)})"
                 else:
                     # Simple constraint name without dimensions
                     k_ = k + ".scale"
@@ -139,9 +151,18 @@ def make_scaler(path, scen_model, scen_scenario, bounds=4, steps=1, display_rang
     scaler_list = [f"{k}={v};" for k, v in scaler_dict.items()]
     scaler_args_txt = "\n".join(scaler_list)
 
+    # Find the message_ix root directory by looking for the model/scaler directory
+    current_file = os.path.abspath(__file__)
+    # Go up from tools/make_scaler/scaler_optim.py to message_ix root
+    message_ix_root = os.path.dirname(os.path.dirname(os.path.dirname(current_file)))
+    
     scaler_gms_name = "_".join(s.replace(" ", "_") for s in [scen_model, scen_scenario])
-    scaler_gms_dir = os.path.join(f"model/scaler/MsgScaler_{scaler_gms_name}.gms")
-    os.makedirs(os.path.dirname(scaler_gms_dir), exist_ok=True)
+    
+    scaler_dir = os.path.join(message_ix_root, "model", "scaler")
+    os.makedirs(scaler_dir, exist_ok=True)  # Create directory if it doesn't exist
+    
+    scaler_gms_dir = os.path.join(scaler_dir, f"MsgScaler_{scaler_gms_name}.gms")
+    
     with open(scaler_gms_dir, "w") as txtfile:
         txtfile.write(scaler_args_txt)
 

@@ -109,11 +109,13 @@ def get_scaler_args(
         strings = ["MsgScaler", scenario_ref_model, scenario_ref_scenario]
 
     file_name = "_".join(s.replace(" ", "_") for s in strings)
-    prescale_args_dir = os.path.join(f"model/scaler/{file_name}.gms")
+    prescale_args_dir = os.path.join(f"message_ix/model/scaler/{file_name}.gms")
 
     if os.path.exists(prescale_args_dir):
         return f"--scaler={file_name}"
     else:
+        print(f" I am here {os.getcwd()}")
+        print(f"could not find file at {prescale_args_dir} ")
         print("The referred scenario doesn't have prescaler file!")
         print("Please use make_prescaler() function to create one")
 
@@ -246,9 +248,21 @@ def make_scaler(path, scen_model, scen_scenario, bounds=4, steps=1, display_rang
             else:
                 # Check if this is a multi-dimensional constraint (has parentheses)
                 if "(" in k and ")" in k:
-                    # For multi-dimensional constraints, just add .scale after the name
-                    # The quotes are already in the MPS file data, don't add more!
-                    k_ = k.replace("(", ".scale(")
+                    # Extract constraint name and parameters
+                    constraint_name = k[:k.index("(")]
+                    params = k[k.index("(")+1:k.index(")")].split(",")
+                    # Quote each parameter only if not already quoted
+                    quoted_params = []
+                    for p in params:
+                        p = p.strip()
+                        if p.startswith("'") and p.endswith("'"):
+                            # Already quoted, use as-is
+                            quoted_params.append(p)
+                        else:
+                            # Not quoted, add quotes
+                            quoted_params.append(f"'{p}'")
+                    # Reconstruct with quotes
+                    k_ = f"{constraint_name}.scale({','.join(quoted_params)})"
                 else:
                     # Simple constraint name without dimensions
                     k_ = k + ".scale"
@@ -266,14 +280,19 @@ def make_scaler(path, scen_model, scen_scenario, bounds=4, steps=1, display_rang
         scaler_list.append(f"{k}={v};")
     scaler_args_txt = "\n".join(scaler_list)
 
-    current_directory = os.getcwd()
-    two_levels_up = os.path.abspath(os.path.join(current_directory, "../.."))
-
+    # Find the message_ix root directory by looking for the model/scaler directory
+    current_file = os.path.abspath(__file__)
+    # Go up from tools/make_scaler/__init__.py to message_ix root
+    message_ix_root = os.path.dirname(os.path.dirname(os.path.dirname(current_file)))
+    
     scaler_gms_name = [scen_model, scen_scenario]
     scaler_gms_name = "_".join(s.replace(" ", "_") for s in scaler_gms_name)
 
+    scaler_dir = os.path.join(message_ix_root, "model", "scaler")
+    os.makedirs(scaler_dir, exist_ok=True)  # Create directory if it doesn't exist
+    
     scaler_gms_dir = os.path.join(
-        two_levels_up, f"model/scaler/MsgScaler_{scaler_gms_name}.gms"
+        scaler_dir, f"MsgScaler_{scaler_gms_name}.gms"
     )
 
     with open(scaler_gms_dir, "w") as txtfile:
