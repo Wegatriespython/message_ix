@@ -1,10 +1,8 @@
 import os
-
+import re
 
 import numpy as np
 import pandas as pd
-import re
-
 
 from message_ix.tools.lp_diag import LPdiag
 
@@ -43,23 +41,21 @@ def filter_df(data, bounds):
         lo_bound = bounds[0]
         up_bound = bounds[1]
 
-    df_filtered = data.loc[(data["val"] <= lo_bound) | (data["val"] >= up_bound)]
-
-    return df_filtered
+    arr = data["val"].to_numpy()
+    mask = (arr <= lo_bound) | (arr >= up_bound)
+    return data.loc[mask]
 
 
 def make_logdf(data):
     """
-    Make log10 of the absolute non zero value element of dataframe.
+    Optimized log10 of the absolute non zero value element of dataframe.
 
     """
-    log_absdf = data.copy()
-
-    log_absdf.loc[log_absdf["val"] != 0, "val"] = np.log10(
-        np.absolute(log_absdf.loc[log_absdf["val"] != 0, "val"])
-    )
-
-    return log_absdf
+    arr = data["val"].to_numpy()
+    mask = arr != 0
+    log_arr = np.zeros_like(arr, dtype=float)
+    log_arr[mask] = np.log10(np.abs(arr[mask]))
+    return pd.DataFrame({"val": log_arr}, index=data.index)
 
 
 def get_lvl_ix(data, lvl):
@@ -130,6 +126,38 @@ def return_spaces_in_quotes(match):
     return f"'{inner_text.replace('---', ' ')}'"
 
 
+def _process_scaling_step(matrix, scalers, s, bounds, counter, display_range):
+    """Process a single scaling step for rows or columns using optimized operations."""
+    log_absmatrix = make_logdf(matrix)
+    log_absmatrix_solv = filter_df(log_absmatrix, bounds)
+
+    objective_ix = "_obj" if s == "row" else "constobj"
+    levels_solv = [
+        lvl for lvl in get_lvl_ix(log_absmatrix_solv, s) if lvl != objective_ix
+    ]
+
+    if levels_solv:
+        grp = log_absmatrix["val"].groupby(level=s)
+        bounds_df = grp.agg(["min", "max"]).astype(int)
+        mids = ((bounds_df["min"] + bounds_df["max"]) / 2).astype(int)
+        exps = mids if s == "row" else -mids
+        SFs = (10.0**exps).to_dict()
+        SFs = {k: v for k, v in SFs.items() if k in levels_solv}
+    else:
+        SFs = {}
+
+    return_index = list(set(get_lvl_ix(log_absmatrix, s)))
+    multiplier = 1 if counter == 0 else scalers[s].reindex(return_index).fillna(1)
+
+    step_scaler = pd.DataFrame(data=SFs, index=["val"]).transpose()
+    step_scaler.index.name = s
+    step_scaler = step_scaler.reindex(return_index).fillna(1)
+
+    scalers[s] = step_scaler.mul(multiplier)
+    matrix = matrix.div(step_scaler) if s == "row" else matrix.mul(step_scaler)
+    return matrix
+
+
 def make_scaler(path, scen_model, scen_scenario, bounds=4, steps=1, display_range=True):
     """
     Process to generate prescale_args in GAMS to improve
@@ -189,58 +217,20 @@ def make_scaler(path, scen_model, scen_scenario, bounds=4, steps=1, display_rang
     counter = 0
     while counter < steps:
         for s in scalers.keys():
-            # print(matrix)
-            # calculate log base 10 of the absolute value of the matrix
-            log_absmatrix = make_logdf(matrix)
-
-            # Create matrix with small and large coefficients
-            log_absmatrix_solv = filter_df(log_absmatrix, bounds=bounds)
-
-            # Populating row scaler
-            objective_ix = "_obj" if s == "row" else "constobj"
-            index_solv = [
-                e for e in get_lvl_ix(log_absmatrix_solv, s) if e != objective_ix
-            ]
-
-            SFs = {k: [] for k in index_solv}
-            for k in SFs.keys():
-                index_val = get_lvl_ix(log_absmatrix, s) == k
-                dflog_val = log_absmatrix.loc[index_val, "val"]
-                lb, ub = np.int32(min(dflog_val)), np.int32(max(dflog_val))
-                mid = np.int32(np.mean([lb, ub]))
-
-                exp = mid if s == "row" else -mid
-
-                SFs[k] = 10.0 ** (exp)
-
-            # Create DataFrame of row scaler
-            return_index = list(set(get_lvl_ix(log_absmatrix, s)))
-            if counter == 0:
-                multiplier = 1
-            else:
-                multiplier = scalers[s].reindex(return_index).fillna(1)
-            step_scaler = pd.DataFrame(data=SFs, index=["val"]).transpose()
-            step_scaler.index.name = s
-            step_scaler = step_scaler.reindex(return_index).fillna(1)
-
-            # summarize multipliers from previous steps
-            scalers[s] = step_scaler.mul(multiplier)
-
-            # Create new matrix with scaled rows
-            matrix = matrix.div(step_scaler) if s == "row" else matrix.mul(step_scaler)
+            matrix = _process_scaling_step(
+                matrix, scalers, s, bounds, counter, display_range
+            )
 
         if display_range is True:
             show_range(matrix, f"Scaled range step {counter + 1}")
 
-        # Increment the counter
         counter += 1
 
     # generating prescaler arguments for GAMS
     scaler_dict = {}
     for key, df_scaler in scalers.items():
         df_scaler = df_scaler.loc[df_scaler["val"] != 1]
-        df_scaler_dict = df_scaler["val"].to_dict()
-        for k, v in df_scaler_dict.items():
+        for k, v in df_scaler["val"].to_dict().items():
             if k == "_obj":
                 k_ = "_obj.scale"
             elif k == "constobj":
@@ -249,8 +239,8 @@ def make_scaler(path, scen_model, scen_scenario, bounds=4, steps=1, display_rang
                 # Check if this is a multi-dimensional constraint (has parentheses)
                 if "(" in k and ")" in k:
                     # Extract constraint name and parameters
-                    constraint_name = k[:k.index("(")]
-                    params = k[k.index("(")+1:k.index(")")].split(",")
+                    constraint_name = k[: k.index("(")]
+                    params = k[k.index("(") + 1 : k.index(")")].split(",")
                     # Quote each parameter only if not already quoted
                     quoted_params = []
                     for p in params:
@@ -266,8 +256,8 @@ def make_scaler(path, scen_model, scen_scenario, bounds=4, steps=1, display_rang
                 else:
                     # Simple constraint name without dimensions
                     k_ = k + ".scale"
-            # Note: We do NOT replace ___ with spaces anymore to avoid breaking quoted strings
-            scaler_dict.update({k_: v})
+            # Note: We do NOT replace ___ with spaces to avoid breaking strings
+            scaler_dict[k_] = v
 
     # add this line to active scaling option
     scaler_dict["MESSAGE_LP.scaleopt"] = 1
@@ -275,25 +265,20 @@ def make_scaler(path, scen_model, scen_scenario, bounds=4, steps=1, display_rang
     scaler_df = pd.DataFrame(scaler_dict, index=["val"]).transpose()
     scaler_df.index = scaler_df.index.rename("key", inplace=False)
 
-    scaler_list = []
-    for k, v in scaler_dict.items():
-        scaler_list.append(f"{k}={v};")
+    scaler_list = [f"{k}={v};" for k, v in scaler_dict.items()]
     scaler_args_txt = "\n".join(scaler_list)
 
     # Find the message_ix root directory by looking for the model/scaler directory
     current_file = os.path.abspath(__file__)
     # Go up from tools/make_scaler/__init__.py to message_ix root
     message_ix_root = os.path.dirname(os.path.dirname(os.path.dirname(current_file)))
-    
-    scaler_gms_name = [scen_model, scen_scenario]
-    scaler_gms_name = "_".join(s.replace(" ", "_") for s in scaler_gms_name)
+
+    scaler_gms_name = "_".join(s.replace(" ", "_") for s in [scen_model, scen_scenario])
 
     scaler_dir = os.path.join(message_ix_root, "model", "scaler")
     os.makedirs(scaler_dir, exist_ok=True)  # Create directory if it doesn't exist
-    
-    scaler_gms_dir = os.path.join(
-        scaler_dir, f"MsgScaler_{scaler_gms_name}.gms"
-    )
+
+    scaler_gms_dir = os.path.join(scaler_dir, f"MsgScaler_{scaler_gms_name}.gms")
 
     with open(scaler_gms_dir, "w") as txtfile:
         # Write some text to the file

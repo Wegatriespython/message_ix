@@ -14,34 +14,27 @@ patterns or create specific test cases for newly discovered syntax issues.
 """
 
 import os
-import shutil
 import re
 import tempfile
 
-import numpy as np
 import pandas as pd
 import pytest
 
 from message_ix.tools.make_scaler import (
     filter_df,
-    make_logdf,
     get_lvl_ix,
-    show_range,
     get_scaler_args,
+    make_logdf,
+    make_scaler,
     replace_spaces_in_quotes,
     return_spaces_in_quotes,
-    make_scaler,
-)
-from message_ix.tools.make_scaler.scaler_optim import (
-    optimized_filter_df,
-    optimized_make_logdf,
-    get_lvl_ix as get_lvl_ix_opt,
-    show_range as show_range_opt,
-    make_scaler as make_scaler_opt,
+    show_range,
 )
 
+# Optimized functions are now integrated into the main module
 
-@pytest.mark.parametrize("func", [filter_df, optimized_filter_df])
+
+@pytest.mark.parametrize("func", [filter_df])
 def test_filter_df_int_bounds(func):
     """Test filter_df with integer bounds parameter."""
     df = pd.DataFrame({"val": [-3, -1, 0, 2, 5]})
@@ -50,7 +43,7 @@ def test_filter_df_int_bounds(func):
     assert list(result["val"]) == [-3, 2, 5]
 
 
-@pytest.mark.parametrize("func", [filter_df, optimized_filter_df])
+@pytest.mark.parametrize("func", [filter_df])
 def test_filter_df_list_bounds(func):
     """Test filter_df with list bounds parameter."""
     df = pd.DataFrame({"val": [-3, -1, 0, 1, 3]})
@@ -59,7 +52,7 @@ def test_filter_df_list_bounds(func):
     assert list(result["val"]) == [-3, -1, 1, 3]
 
 
-@pytest.mark.parametrize("func", [make_logdf, optimized_make_logdf])
+@pytest.mark.parametrize("func", [make_logdf])
 def test_make_logdf(func):
     """Test make_logdf log10 transformation of DataFrame values."""
     df = pd.DataFrame({"val": [-100, -10, 0, 10, 100]})
@@ -70,7 +63,7 @@ def test_make_logdf(func):
     assert list(df["val"]) == [-100, -10, 0, 10, 100]
 
 
-@pytest.mark.parametrize("func", [get_lvl_ix, get_lvl_ix_opt])
+@pytest.mark.parametrize("func", [get_lvl_ix])
 def test_get_lvl_ix(func):
     """Test get_lvl_ix level index extraction from MultiIndex DataFrame."""
     idx = pd.MultiIndex.from_product([["r1", "r2"], ["c1", "c2"]], names=("row", "col"))
@@ -83,7 +76,7 @@ def test_get_lvl_ix(func):
     assert list(lvl1) == ["c1", "c2", "c1", "c2"]
 
 
-@pytest.mark.parametrize("func", [show_range, show_range_opt])
+@pytest.mark.parametrize("func", [show_range])
 def test_show_range(func, capsys):
     """Test show_range coefficient exponent display function."""
     df = pd.DataFrame({"val": [0, 1, 10, 100]})
@@ -114,7 +107,90 @@ def test_get_scaler_args_missing_file(capsys):
     assert "doesn't have prescaler file" in err
 
 
-@pytest.mark.parametrize("scaler_fn", [make_scaler, make_scaler_opt])
+def _validate_syntax_line(line_num, line):
+    """Validate a single line of GAMS scaler syntax."""
+    errors = []
+    line = line.strip()
+    if not line:
+        return errors
+
+    # Check basic structure: should end with semicolon
+    if not line.endswith(";"):
+        errors.append(f"Line {line_num}: Missing semicolon: {line}")
+        return errors
+
+    # Remove semicolon for parsing
+    statement = line[:-1]
+
+    # Check for assignment operator
+    if "=" not in statement:
+        errors.append(f"Line {line_num}: Missing assignment operator: {line}")
+        return errors
+
+    # Split into left and right parts
+    parts = statement.split("=", 1)
+    if len(parts) != 2:
+        errors.append(f"Line {line_num}: Invalid assignment format: {line}")
+        return errors
+
+    left_part = parts[0].strip()
+    right_part = parts[1].strip()
+
+    # Validate right part is a valid number
+    try:
+        float(right_part)
+    except ValueError:
+        errors.append(f"Line {line_num}: Invalid numeric value '{right_part}': {line}")
+
+    errors.extend(_validate_scale_parameters(line_num, line, left_part))
+    return errors
+
+
+def _validate_scale_parameters(line_num, line, left_part):
+    """Validate parameters in scale statements."""
+    errors = []
+
+    # Check left part structure
+    if left_part == "MESSAGE_LP.scaleopt":
+        return errors
+    elif ".scale" in left_part:
+        # Check for parameters in parentheses
+        if "(" in left_part and ")" in left_part:
+            # Extract parameters
+            start_paren = left_part.index("(")
+            end_paren = left_part.rindex(")")
+            param_string = left_part[start_paren + 1 : end_paren]
+
+            # Check if parameters are quoted
+            params = param_string.split(",")
+            for param in params:
+                param = param.strip()
+                if param and not (param.startswith("'") and param.endswith("'")):
+                    errors.append(
+                        f"Line {line_num}: Unquoted parameter '{param}': {line}"
+                    )
+
+                # Check for double quotes (indicates over-quoting)
+                if param.startswith("''") and param.endswith("''"):
+                    errors.append(
+                        f"Line {line_num}: Double-quoted parameter '{param}': {line}"
+                    )
+
+            # Check for unquoted identifiers (common GAMS identifiers)
+            unquoted_pattern = re.compile(
+                r'\b(R\d+_\w+|year|all|final|secondary|import|export)\b(?![\'"])'
+            )
+            if unquoted_pattern.search(param_string):
+                errors.append(
+                    f"Line {line_num}: Found unquoted identifier in parameters: {line}"
+                )
+    else:
+        errors.append(f"Line {line_num}: Invalid scale statement format: {line}")
+
+    return errors
+
+
+@pytest.mark.parametrize("scaler_fn", [make_scaler])
 def test_sample_syntax_validation(test_data_path, scaler_fn):
     """Test make_scaler GAMS syntax generation with baseline.mps sample data.
 
@@ -135,7 +211,7 @@ def test_sample_syntax_validation(test_data_path, scaler_fn):
     assert mps_file.exists(), f"Test data not found: {mps_file}"
 
     # Create temporary directory for scaler output
-    with tempfile.TemporaryDirectory() as tmp_dir:
+    with tempfile.TemporaryDirectory():
         # Run make_scaler with the baseline sample
         scaler_df = scaler_fn(
             path=str(mps_file),
@@ -170,82 +246,7 @@ def test_sample_syntax_validation(test_data_path, scaler_fn):
         # Exhaustive syntax validation
         errors = []
         for line_num, line in enumerate(scaler_lines, 1):
-            line = line.strip()
-            if not line:
-                continue
-
-            # Check basic structure: should end with semicolon
-            if not line.endswith(";"):
-                errors.append(f"Line {line_num}: Missing semicolon: {line}")
-                continue
-
-            # Remove semicolon for parsing
-            statement = line[:-1]
-
-            # Check for assignment operator
-            if "=" not in statement:
-                errors.append(f"Line {line_num}: Missing assignment operator: {line}")
-                continue
-
-            # Split into left and right parts
-            parts = statement.split("=", 1)
-            if len(parts) != 2:
-                errors.append(f"Line {line_num}: Invalid assignment format: {line}")
-                continue
-
-            left_part = parts[0].strip()
-            right_part = parts[1].strip()
-
-            # Validate right part is a valid number
-            try:
-                float(right_part)
-            except ValueError:
-                errors.append(
-                    f"Line {line_num}: Invalid numeric value '{right_part}': {line}"
-                )
-
-            # Check left part structure
-            if left_part == "MESSAGE_LP.scaleopt":
-                # Special case for the scaleopt parameter
-                continue
-            elif ".scale" in left_part:
-                # Check for parameters in parentheses
-                if "(" in left_part and ")" in left_part:
-                    # Extract parameters
-                    start_paren = left_part.index("(")
-                    end_paren = left_part.rindex(")")
-                    param_string = left_part[start_paren + 1 : end_paren]
-
-                    # Check if parameters are quoted
-                    params = param_string.split(",")
-                    for param in params:
-                        param = param.strip()
-                        if param and not (
-                            param.startswith("'") and param.endswith("'")
-                        ):
-                            errors.append(
-                                f"Line {line_num}: Unquoted parameter '{param}': {line}"
-                            )
-
-                        # Check for double quotes (indicates over-quoting)
-                        if param.startswith("''") and param.endswith("''"):
-                            errors.append(
-                                f"Line {line_num}: Double-quoted parameter '{param}': {line}"
-                            )
-
-                    # Check for unquoted identifiers (common GAMS identifiers that should be quoted)
-                    # Look for patterns like R12_XXX, year, all, etc. without quotes
-                    unquoted_pattern = re.compile(
-                        r'\b(R\d+_\w+|year|all|final|secondary|import|export)\b(?![\'"])'
-                    )
-                    if unquoted_pattern.search(param_string):
-                        errors.append(
-                            f"Line {line_num}: Found unquoted identifier in parameters: {line}"
-                        )
-            else:
-                errors.append(
-                    f"Line {line_num}: Invalid scale statement format: {line}"
-                )
+            errors.extend(_validate_syntax_line(line_num, line))
 
         # Report all errors found
         if errors:
@@ -295,4 +296,3 @@ def test_sample_syntax_validation(test_data_path, scaler_fn):
         # Clean up test scaler file
         if os.path.exists(scaler_file_path):
             os.remove(scaler_file_path)
-
