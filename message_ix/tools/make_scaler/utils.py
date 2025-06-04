@@ -38,7 +38,8 @@ def filter_df(data, bounds):
         lo_bound = bounds[0]
         up_bound = bounds[1]
 
-    arr = data["val"].to_numpy()
+    # Use .values for faster numpy array access
+    arr = data["val"].values
     mask = (arr <= lo_bound) | (arr >= up_bound)
     return data.loc[mask]
 
@@ -48,11 +49,15 @@ def make_logdf(data):
     Optimized log10 of the absolute non zero value element of dataframe.
 
     """
-    arr = data["val"].to_numpy()
+    # Use .values for faster numpy array access
+    arr = data["val"].values
     mask = arr != 0
     log_arr = np.zeros_like(arr, dtype=float)
     log_arr[mask] = np.log10(np.abs(arr[mask]))
-    return pd.DataFrame({"val": log_arr}, index=data.index)
+    # Avoid DataFrame reconstruction - modify in place if possible
+    result = data.copy()
+    result["val"] = log_arr
+    return result
 
 
 def get_lvl_ix(data, lvl):
@@ -76,15 +81,22 @@ def show_range(data, pretext):
     To displace coefficient exponents range.
 
     """
-
-    log_absdf = make_logdf(data)
+    # Optimize: avoid creating full log dataframe
+    arr = data["val"].values
+    mask = arr != 0
+    if mask.any():
+        log_vals = np.log10(np.abs(arr[mask]))
+        min_val = np.int32(np.min(log_vals))
+        max_val = np.int32(np.max(log_vals))
+    else:
+        min_val = max_val = 0
 
     print(
         f"{pretext}:",
         "[",
-        np.int32(np.min(log_absdf)),  # lower bound
+        min_val,  # lower bound
         "|",
-        np.int32(np.max(log_absdf)),  # upper bound
+        max_val,  # upper bound
         "]",
     )
 
@@ -134,22 +146,46 @@ def _process_scaling_step(matrix, scalers, s, bounds, counter, display_range):
     ]
 
     if levels_solv:
-        grp = log_absmatrix["val"].groupby(level=s)
+        # Optimization: Only group the rows/cols that need scaling
+        # First get all indices at the specified level
+        all_indices = get_lvl_ix(log_absmatrix, s)
+        # Create a mask for rows/cols we want to process
+        mask = all_indices.isin(levels_solv)
+        filtered_matrix = log_absmatrix[mask]
+        
+        # Now group only the filtered data
+        grp = filtered_matrix["val"].groupby(level=s)
         bounds_df = grp.agg(["min", "max"]).astype(int)
         mids = ((bounds_df["min"] + bounds_df["max"]) / 2).astype(int)
         exps = mids if s == "row" else -mids
-        SFs = (10.0**exps).to_dict()
-        SFs = {k: v for k, v in SFs.items() if k in levels_solv}
+        
+        # Vectorized power operation
+        SFs = pd.Series(10.0**exps, index=exps.index).to_dict()
     else:
         SFs = {}
 
     return_index = list(set(get_lvl_ix(log_absmatrix, s)))
-    multiplier = 1 if counter == 0 else scalers[s].reindex(return_index).fillna(1)
+    
+    # Optimization: Avoid creating new DataFrame for scalers if possible
+    if counter == 0:
+        # First iteration - create new scaler
+        step_scaler = pd.Series(1.0, index=return_index)
+        step_scaler.update(pd.Series(SFs))
+        step_scaler = pd.DataFrame({"val": step_scaler})
+        step_scaler.index.name = s
+    else:
+        # Subsequent iterations - update existing
+        multiplier = scalers[s].reindex(return_index).fillna(1)
+        step_scaler = pd.DataFrame({"val": pd.Series(SFs, index=return_index).fillna(1.0)})
+        step_scaler.index.name = s
+        step_scaler = step_scaler.mul(multiplier)
 
-    step_scaler = pd.DataFrame(data=SFs, index=["val"]).transpose()
-    step_scaler.index.name = s
-    step_scaler = step_scaler.reindex(return_index).fillna(1)
-
-    scalers[s] = step_scaler.mul(multiplier)
-    matrix = matrix.div(step_scaler) if s == "row" else matrix.mul(step_scaler)
+    scalers[s] = step_scaler
+    
+    # Optimization: Use values for arithmetic operations
+    if s == "row":
+        matrix = matrix.div(step_scaler)
+    else:
+        matrix = matrix.mul(step_scaler)
+    
     return matrix

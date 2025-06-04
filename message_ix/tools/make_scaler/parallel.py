@@ -18,6 +18,13 @@ from .utils import (
     show_range,
 )
 
+# Try to import fast LP reader
+try:
+    from message_ix.tools.lp_diag.lp_diag_fast import LPdiagFast
+    HAS_FAST_LP = True
+except ImportError:
+    HAS_FAST_LP = False
+
 
 def _chunk_file_lines(file_path, n_workers=None):
     """Split .mps file into chunks for parallel processing."""
@@ -112,26 +119,39 @@ def _process_scaling_step_parallel(matrix, scalers, s, bounds, counter, display_
     ]
 
     if levels_solv:
-        # Vectorized groupby operations
-        grp = log_absmatrix["val"].groupby(level=s)
+        # Optimization: Only group the rows/cols that need scaling
+        all_indices = get_lvl_ix(log_absmatrix, s)
+        mask = all_indices.isin(levels_solv)
+        filtered_matrix = log_absmatrix[mask]
+        
+        # Vectorized groupby operations on filtered data
+        grp = filtered_matrix["val"].groupby(level=s)
         bounds_df = grp.agg(["min", "max"]).astype(int)
         mids = ((bounds_df["min"] + bounds_df["max"]) / 2).astype(int)
         exps = mids if s == "row" else -mids
 
         # Vectorized power operation
         SFs = pd.Series(10.0**exps, index=exps.index).to_dict()
-        SFs = {k: v for k, v in SFs.items() if k in levels_solv}
     else:
         SFs = {}
 
     return_index = list(set(get_lvl_ix(log_absmatrix, s)))
-    multiplier = 1 if counter == 0 else scalers[s].reindex(return_index).fillna(1)
+    
+    # Optimization: Avoid creating new DataFrame for scalers if possible
+    if counter == 0:
+        # First iteration - create new scaler
+        step_scaler = pd.Series(1.0, index=return_index)
+        step_scaler.update(pd.Series(SFs))
+        step_scaler = pd.DataFrame({"val": step_scaler})
+        step_scaler.index.name = s
+    else:
+        # Subsequent iterations - update existing
+        multiplier = scalers[s].reindex(return_index).fillna(1)
+        step_scaler = pd.DataFrame({"val": pd.Series(SFs, index=return_index).fillna(1.0)})
+        step_scaler.index.name = s
+        step_scaler = step_scaler.mul(multiplier)
 
-    step_scaler = pd.DataFrame(data=SFs, index=["val"]).transpose()
-    step_scaler.index.name = s
-    step_scaler = step_scaler.reindex(return_index).fillna(1)
-
-    scalers[s] = step_scaler.mul(multiplier)
+    scalers[s] = step_scaler
 
     # Optimized matrix operations
     if s == "row":
@@ -159,6 +179,7 @@ def make_scaler_parallel(
     steps=1,
     display_range=True,
     n_workers=None,
+    use_fast_lp=None,
     chunk_size=10000,
 ):
     """
@@ -201,15 +222,29 @@ def make_scaler_parallel(
 
     print(f"Starting parallel make_scaler with {n_workers} workers...")
 
-    # Step 1: Parallel file preprocessing
-    preprocessing_start = time.time()
-    _parallel_file_preprocessing(path, n_workers)
-    preprocessing_time = time.time() - preprocessing_start
-    print(f"File preprocessing completed in {preprocessing_time:.2f}s")
-
+    # Determine whether to use fast LP reader
+    if use_fast_lp is None:
+        # Auto-detect based on file size
+        file_size_mb = os.path.getsize(path) / (1024 * 1024)
+        use_fast_lp = HAS_FAST_LP and file_size_mb > 100
+    
+    # Step 1: File preprocessing (only if not using fast LP reader)
+    # Fast LP reader handles preprocessing internally
+    if not (use_fast_lp and HAS_FAST_LP):
+        preprocessing_start = time.time()
+        _parallel_file_preprocessing(path, n_workers)
+        preprocessing_time = time.time() - preprocessing_start
+        print(f"File preprocessing completed in {preprocessing_time:.2f}s")
+    
     # Step 2: Read matrix (sequential - LPdiag not thread-safe)
     lp_start = time.time()
-    lp = LPdiag()
+    
+    if use_fast_lp and HAS_FAST_LP:
+        print(f"Using fast LP reader for large file")
+        lp = LPdiagFast()
+    else:
+        lp = LPdiag()
+    
     lp.read_mps(path)
     data = lp.read_matrix()
     matrix = data

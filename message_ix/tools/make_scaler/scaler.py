@@ -14,9 +14,16 @@ from .utils import (
     show_range,
 )
 
+# Try to import fast LP reader
+try:
+    from message_ix.tools.lp_diag.lp_diag_fast import LPdiagFast
+    HAS_FAST_LP = True
+except ImportError:
+    HAS_FAST_LP = False
+
 
 def _make_scaler_standard(
-    path, scen_model, scen_scenario, bounds=4, steps=1, display_range=True
+    path, scen_model, scen_scenario, bounds=4, steps=1, display_range=True, use_fast_lp=None
 ):
     """
     Standard implementation of make_scaler.
@@ -51,22 +58,41 @@ def _make_scaler_standard(
         A dictionary of prescale arguments to be passed to the GAMS model.
     """
 
-    # Aligning mps file content with lp_diag naming formats
-    quoted_pattern = re.compile(r"'([^']*)'")
-
-    with open(path, "r+") as f:
-        old = f.readlines()  # Pull the file contents to a list
-        f.seek(0)  # Jump to start, so we overwrite instead of appending
-        f.truncate()  # Clear the file before writing
-        for line in old:
-            # Replace spaces inside single-quoted substrings
-            new_line = quoted_pattern.sub(replace_spaces_in_quotes, line)
-            f.write(new_line)
-    lp = LPdiag()
-    # Start making the scaler
-    lp.read_mps(path)
-
-    data = lp.read_matrix()
+    # Determine whether to use fast LP reader
+    if use_fast_lp is None:
+        # Auto-detect based on file size
+        file_size_mb = os.path.getsize(path) / (1024 * 1024)
+        use_fast_lp = HAS_FAST_LP and file_size_mb > 100
+    
+    if use_fast_lp and HAS_FAST_LP:
+        print(f"Using fast LP reader for large file ({os.path.getsize(path) / (1024 * 1024):.1f} MB)")
+        # Fast path - process file with optimized reader
+        # Still need to handle quoted strings
+        quoted_pattern = re.compile(r"'([^']*)'")
+        with open(path, "r+") as f:
+            old = f.readlines()
+            f.seek(0)
+            f.truncate()
+            for line in old:
+                new_line = quoted_pattern.sub(replace_spaces_in_quotes, line)
+                f.write(new_line)
+        
+        lp = LPdiagFast()
+        lp.read_mps(path)
+        data = lp.read_matrix()
+    else:
+        # Standard path
+        quoted_pattern = re.compile(r"'([^']*)'")
+        with open(path, "r+") as f:
+            old = f.readlines()
+            f.seek(0)
+            f.truncate()
+            for line in old:
+                new_line = quoted_pattern.sub(replace_spaces_in_quotes, line)
+                f.write(new_line)
+        lp = LPdiag()
+        lp.read_mps(path)
+        data = lp.read_matrix()
 
     matrix = data
 
@@ -157,6 +183,7 @@ def make_scaler(
     display_range: bool = True,
     mode: Literal["standard", "parallel", "auto"] = "auto",
     n_workers: int = None,
+    use_fast_lp: bool = None,
     **kwargs,
 ) -> pd.DataFrame:
     """
@@ -186,6 +213,8 @@ def make_scaler(
         Implementation mode: "standard", "parallel", or "auto".
     n_workers: int, optional
         Number of worker processes for parallel mode.
+    use_fast_lp: bool, optional
+        Use fast LP reader for large files. Auto-detected if None.
     **kwargs: dict
         Additional arguments passed to implementation functions.
 
@@ -197,7 +226,7 @@ def make_scaler(
 
     if mode == "standard":
         return _make_scaler_standard(
-            path, scen_model, scen_scenario, bounds, steps, display_range
+            path, scen_model, scen_scenario, bounds, steps, display_range, use_fast_lp
         )
     elif mode == "parallel":
         return make_scaler_parallel(
@@ -208,6 +237,7 @@ def make_scaler(
             steps,
             display_range,
             n_workers,
+            use_fast_lp,
             **kwargs,
         )
     elif mode == "auto":
@@ -224,12 +254,13 @@ def make_scaler(
                 steps,
                 display_range,
                 n_workers,
+                use_fast_lp,
                 **kwargs,
             )
         else:
             print(f"File size: {file_size_mb:.1f}MB - Using standard implementation")
             return _make_scaler_standard(
-                path, scen_model, scen_scenario, bounds, steps, display_range
+                path, scen_model, scen_scenario, bounds, steps, display_range, use_fast_lp
             )
     else:
         raise ValueError(
