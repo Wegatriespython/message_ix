@@ -1,0 +1,134 @@
+# Configuration for Austria Water Integration
+# This file defines the specific subset of water technologies and parameters
+# to be extracted from the MESSAGEix water module for Austria integration
+
+# Project metadata
+project:
+  name: "water_austria"
+  version: "0.1.0"
+  description: "Reduced-form water-energy nexus model for Austria"
+
+# Geographic scope
+geography:
+  base_region: "Austria"
+  fictional_regions:
+    - "Austria_Coastal"  # For demonstrating desalination
+  fictional_basins:
+    - "Danube_Basin"
+    - "Rhine_Basin" 
+    - "Coastal_Basin"
+
+# Phase definitions
+phases:
+  cooling:
+    description: "Power plant cooling technologies"
+    cooling_types:
+      - "ot_fresh"     # Once-through freshwater
+      - "cl_fresh"     # Closed-loop freshwater  
+      - "air"          # Air cooling
+      - "ot_saline"    # Once-through saline
+    water_commodities:
+      - "freshwater"
+      - "surfacewater_basin"
+      - "salinewater_basin"
+      - "ot_fresh"
+      - "cl_fresh"
+      - "air"
+      - "ot_saline"
+    water_levels:
+      - "water_supply"
+      - "water_avail_basin"
+      - "saline_supply"
+      - "share"
+    technologies:
+      supply:
+        - "extract_surfacewater"
+        - "extract_salinewater"
+        - "water_supply_austria"
+      
+  supply:
+    description: "Comprehensive water supply infrastructure"
+    additional_technologies:
+      desalination:
+        - "desal_membrane"
+        - "desal_distillation"
+      treatment:
+        - "urban_t_d"
+        - "rural_t_d"
+        - "water_distribution_austria"
+    additional_commodities:
+      - "groundwater_basin"
+      - "treated_water"
+      - "urban_water"
+      
+  nexus:
+    description: "Full water-energy-land nexus"
+    additional_technologies:
+      irrigation:
+        - "irr_surfacewater"
+        - "irr_groundwater"
+      urban:
+        - "urban_unconnected"
+        - "rural_unconnected"
+    additional_commodities:
+      - "irrigation_water"
+      - "urban_collected_wst"
+
+# Cooling technology parameters (simplified for demonstration)
+cooling_parameters:
+  ot_fresh:
+    efficiency_factor: 0.95      # Relative to base plant
+    water_intensity: 2.5         # m³/MWh
+    capacity_factor_adj: 0.85    # Climate adjustment
+    inv_cost_adj: 1.0           # Investment cost multiplier
+    
+  cl_fresh:
+    efficiency_factor: 0.92
+    water_intensity: 0.8
+    capacity_factor_adj: 0.83
+    inv_cost_adj: 1.15
+    
+  air:
+    efficiency_factor: 0.88
+    water_intensity: 0.0
+    capacity_factor_adj: 0.80
+    inv_cost_adj: 1.25
+    
+  ot_saline:
+    efficiency_factor: 0.94
+    water_intensity: 2.3
+    capacity_factor_adj: 0.84
+    inv_cost_adj: 1.05
+
+# Water supply parameters (fictional values for demonstration)
+water_supply:
+  austria_surface_water:
+    annual_availability: 84000   # MCM/year (fictional)
+    seasonal_variation: 0.3      # Coefficient of variation
+    
+  austria_groundwater:
+    annual_availability: 6000    # MCM/year (fictional)
+    sustainable_rate: 0.8        # Fraction of availability
+    
+  coastal_saline:
+    availability: "unlimited"    # For desalination
+    
+# Share constraints for cooling technologies
+cooling_shares:
+  # Historical shares (fictional values)
+  historical:
+    2010:
+      ot_fresh: 0.6
+      cl_fresh: 0.2
+      air: 0.15
+      ot_saline: 0.05
+    2020:
+      ot_fresh: 0.5
+      cl_fresh: 0.3
+      air: 0.18
+      ot_saline: 0.02
+      
+  # Future constraints
+  constraints:
+    air_cooling_min_2030: 0.25   # Minimum air cooling share by 2030
+    freshwater_max_2040: 0.6     # Maximum freshwater cooling by 2040
