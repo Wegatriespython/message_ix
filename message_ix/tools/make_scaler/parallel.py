@@ -50,13 +50,20 @@ def _process_file_chunk_regex(chunk_lines):
 
 
 def _parallel_file_preprocessing(file_path, n_workers=None):
-    """Parallelize the file preprocessing step."""
+    """Parallelize the file preprocessing step with order preservation."""
     chunks = _chunk_file_lines(file_path, n_workers)
 
     with ThreadPoolExecutor(max_workers=len(chunks)) as executor:
-        processed_chunks = list(executor.map(_process_file_chunk_regex, chunks))
+        # Submit tasks with their original index to preserve order
+        futures = [(i, executor.submit(_process_file_chunk_regex, chunk)) 
+                  for i, chunk in enumerate(chunks)]
+        
+        # Collect results in order
+        processed_chunks = [None] * len(chunks)
+        for i, future in futures:
+            processed_chunks[i] = future.result()
 
-    # Flatten and write back
+    # Flatten and write back in correct order
     with open(file_path, "w") as f:
         for chunk in processed_chunks:
             f.writelines(chunk)
