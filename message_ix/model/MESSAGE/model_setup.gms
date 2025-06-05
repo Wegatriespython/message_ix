@@ -21,9 +21,8 @@ $IF NOT SET out      $SETGLOBAL out "output/MsgOutput.gdx"
 * rolling horizon (period-by-period, recursive-dynamic with limited foresight - 'number of years of foresight'
 $IF NOT SET foresight   $SETGLOBAL foresight "0"
 
-** include scaler commands
-$IF NOT SET scaler $SETGLOBAL scaler "MsgScaler_Default"
-*$IF NOT SET scaler $SETGLOBAL scaler "MsgScaler_SSP_SSP2_development_baseline_DEFAULT_1"
+** include scaler commands (applied before solve if specified)
+* Note: scaler parameter should be just the filename, path will be added automatically
 
 ** specify optional additional calibration output **
 $IF NOT SET calibration $SETGLOBAL calibration ""
@@ -88,4 +87,6 @@ $INCLUDE MESSAGE/scaling_investment_costs.gms
 *----------------------------------------------------------------------------------------------------------------------*
 
 $INCLUDE MESSAGE/model_core.gms
-$INCLUDE scaler/%scaler%.gms
+
+* apply scaler if specified (must be after model declaration, before solve)
+$IF SET scaler $INCLUDE "scaler/%scaler%"
