@@ -1,7 +1,7 @@
 """
 MESSAGEix Water-Austria Integration Module
 
-A reduced-form water-energy nexus model that integrates functional subsets 
+A reduced-form water-energy nexus model that integrates functional subsets
 of the MESSAGEix water module with the Austria energy system tutorial.
 """
 
