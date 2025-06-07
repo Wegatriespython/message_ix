@@ -37,6 +37,23 @@ DEFAULT_CPLEX_OPTIONS = {
     "epopt": 1e-6,
 }
 
+#: Default IPOPT solver options for MESSAGEix
+DEFAULT_IPOPT_OPTIONS = {
+    "linear_solver": "mumps",  # or "ma27" if MUMPS not available
+    "max_iter": 10000,
+    "tol": 1e-6,
+    "constr_viol_tol": 1e-6,
+    "acceptable_tol": 1e-6,
+    "nlp_scaling_method": "gradient-based",
+    "mu_strategy": "adaptive",
+    "warm_start_init_point": "yes",
+    "warm_start_bound_push": 1e-6,
+    "warm_start_mult_bound_push": 1e-6,
+    "hessian_approximation": "limited-memory",
+    "print_level": 5,
+    "print_timing_statistics": "yes",
+}
+
 #: Common dimension name abbreviations mapped to tuples with:
 #:
 #: 1. the respective coordinate/index set, and
@@ -203,16 +220,39 @@ class GAMSModel(ixmp.model.gams.GAMSModel):
     def __init__(self, name=None, **model_options):
         # Update the default options with any user-provided options
         model_options.setdefault("model_dir", config.get("message model dir"))
-        self.cplex_opts = copy(DEFAULT_CPLEX_OPTIONS)
-        self.cplex_opts.update(config.get("message solve options") or dict())
-        self.cplex_opts.update(model_options.pop("solve_options", {}))
+
+        # Extract solver and solve_options from model_options
+        self.solver = model_options.pop("solver", "cplex").lower()
+        self._solve_options = model_options.pop("solve_options", {})
+
+        # Initialize solver options based on solver type
+        if self.solver == "ipopt":
+            self.solver_opts = copy(DEFAULT_IPOPT_OPTIONS)
+            # Try to get IPOPT options from config, fall back to empty dict if not found
+            try:
+                self.solver_opts.update(config.get("message ipopt options") or dict())
+            except AttributeError:
+                # Config key doesn't exist, use defaults
+                pass
+        else:
+            # Default to CPLEX options
+            self.solver_opts = copy(DEFAULT_CPLEX_OPTIONS)
+            self.solver_opts.update(config.get("message solve options") or dict())
+
+        self.solver_opts.update(self._solve_options)
+
+        # For backward compatibility, keep cplex_opts as alias for CPLEX solver
+        self.cplex_opts = (
+            self.solver_opts if self.solver == "cplex" else copy(DEFAULT_CPLEX_OPTIONS)
+        )
 
         super().__init__(name, **model_options)
 
     def run(self, scenario: "ixmp.core.scenario.Scenario") -> None:
         """Execute the model.
 
-        GAMSModel creates a file named ``cplex.opt`` in the model directory containing
+        GAMSModel creates solver-specific option files
+        (e.g., ``cplex.opt``, ``ipopt.opt``)
         the “solve_options”, as described above.
 
         .. warning:: GAMSModel can solve Scenarios in two or more Python processes
@@ -222,30 +262,71 @@ class GAMSModel(ixmp.model.gams.GAMSModel):
         # Ensure the data in `scenario` is consistent with the MESSAGE formulation
         self.enforce(scenario)
 
+        # Write solver options file based on solver type
+        self._write_solver_options()
+
+        # Set GAMS global variables for solver selection
+        # auxiliary_settings.gms will use these if set,
+        # otherwise defaults to CPLEX/CONOPT
+        if self.solver == "ipopt":
+            # Set GAMS global variables for IPOPT using gams_args
+            original_gams_args = self.gams_args[:]
+            self.gams_args.extend(["--LP=IPOPT", "--NLP=IPOPT"])
+
+            try:
+                result = super().run(scenario)
+            finally:
+                # Restore original gams_args
+                self.gams_args[:] = original_gams_args
+        elif self.solver == "gurobi":
+            # Set GAMS global variables for GUROBI using gams_args
+            original_gams_args = self.gams_args[:]
+            self.gams_args.extend(["--LP=GUROBI", "--NLP=GUROBI"])
+
+            try:
+                result = super().run(scenario)
+            finally:
+                # Restore original gams_args
+                self.gams_args[:] = original_gams_args
+        else:
+            # Use default solvers (CPLEX/CONOPT) - no additional arguments needed
+            result = super().run(scenario)
+
         # If two runs are kicked off simultaneously  with the same self.model_dir, then
         # they will try to write the same optfile, and may write different contents.
         #
         # TODO Re-enable the 'use_temp_dir' feature from ixmp.GAMSModel (disabled above)
-        #      so that cplex.opt will be specific to that directory.
-
-        # Write CPLEX options into an options file
-        optfile = Path(self.model_dir).joinpath("cplex.opt")
-        lines = ("{} = {}".format(*kv) for kv in self.cplex_opts.items())
-        optfile.write_text("\n".join(lines))
-        log.info(f"Use CPLEX options {self.cplex_opts}")
-
-        self.cplex_opts.update({"barcrossalg": 2})
-        optfile2 = Path(self.model_dir).joinpath("cplex.op2")
-        lines2 = ("{} = {}".format(*kv) for kv in self.cplex_opts.items())
-        optfile2.write_text("\n".join(lines2))
-
-        result = super().run(scenario)
+        #      so that solver.opt will be specific to that directory.
 
         # In previous versions, the `cplex.opt` file(s) were removed at this point
         # in the workflow. This has been removed due to issues when running
         # scenarios asynchronously.
 
         return result
+
+    def _write_solver_options(self):
+        """Write solver options to appropriate .opt file."""
+        if self.solver == "ipopt":
+            # Write IPOPT options file
+            optfile = Path(self.model_dir).joinpath("ipopt.opt")
+            lines = []
+            for key, value in self.solver_opts.items():
+                lines.append(f"{key} {value}")
+            optfile.write_text("\n".join(lines))
+            log.info(f"Use IPOPT solver with options {self.solver_opts}")
+        else:
+            # Write CPLEX options files (default behavior)
+            optfile = Path(self.model_dir).joinpath("cplex.opt")
+            lines = ("{} = {}".format(*kv) for kv in self.solver_opts.items())
+            optfile.write_text("\n".join(lines))
+            log.info(f"Use CPLEX options {self.solver_opts}")
+
+            # Write second CPLEX options file with additional barcrossalg setting
+            cplex_opts_2 = copy(self.solver_opts)
+            cplex_opts_2.update({"barcrossalg": 2})
+            optfile2 = Path(self.model_dir).joinpath("cplex.op2")
+            lines2 = ("{} = {}".format(*kv) for kv in cplex_opts_2.items())
+            optfile2.write_text("\n".join(lines2))
 
 
 def _check_structure(scenario: "ixmp.core.scenario.Scenario"):

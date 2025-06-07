@@ -20,9 +20,14 @@ option RESLIM = 1e6 ;   # resource limit (in seconds; 1e6 is approximately 11 da
 * - CONOPT is slower, but (in non-linear problems) usually more helpful to identify the feasibility problems
 * general comment: sometimes, first using one solver and then another (using the previous solution as starting point)
 * helps even if the previous run did not solve to optimality
-option LP = CPLEX ;
-option NLP = CONOPT ;
-option MCP = PATH ;
+* Conditional solver selection - defaults to CPLEX/CONOPT if not specified via command line
+$if not set LP $setglobal LP CPLEX
+$if not set NLP $setglobal NLP CONOPT
+$if not set MCP $setglobal MCP PATH
+
+option LP = %LP% ;
+option NLP = %NLP% ;
+option MCP = %MCP% ;
 
 *option solveopt=clear ;# remove results of previous runs in memory
 option solveopt=merge ; # keep results of previous runs in memory

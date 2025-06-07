@@ -731,7 +731,7 @@ class Scenario(ixmp.Scenario):
         # Call the parent method
         return super().clone(*args, **kwargs)
 
-    def solve(self, model="MESSAGE", solve_options={}, **kwargs):
+    def solve(self, model="MESSAGE", solve_options={}, solver=None, **kwargs):
         """Solve MESSAGE or MESSAGE-MACRO for the Scenario.
 
         By default, :meth:`ixmp.Scenario.solve` is called with 'MESSAGE' as the
@@ -744,12 +744,19 @@ class Scenario(ixmp.Scenario):
         model : 'MESSAGE' or 'MACRO' or 'MESSAGE-MACRO', optional
             Model to solve.
         solve_options : dict, optional
-            Mapping of (`option` → `value`) to use for GAMS CPLEX solver options file.
-            See the :class:`.MESSAGE` class and :obj:`.DEFAULT_CPLEX_OPTIONS`.
+            Mapping of (`option` → `value`) to use for solver options file.
+            See the :class:`.MESSAGE` class and :obj:`.DEFAULT_CPLEX_OPTIONS`
+            or :obj:`.DEFAULT_IPOPT_OPTIONS`.
+        solver : str, optional
+            Solver to use. Options are 'cplex' (default), 'ipopt', 'gurobi', etc.
+            If specified, this will override the default solver configuration.
         kwargs :
             Other options control the execution of the underlying GAMS code; see the
             :class:`.MESSAGE_MACRO` class and :class:`.GAMSModel`.
         """
+        # Pass solver parameter to the underlying solve method
+        if solver is not None:
+            kwargs["solver"] = solver
         super().solve(model=model, solve_options=solve_options, **kwargs)
 
     def add_macro(
