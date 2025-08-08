@@ -49,6 +49,11 @@
 *      - Relative duration between sub-annual time slices [#df_auto]_
 *    * - **df_period**
 *      - ``year``
+*      - Discount factor for period [#df_auto]_
+*    * - regularization_epsilon
+*      - 
+*      - Quadratic regularization coefficient for QP formulation (default: 1e-6)
+*      - ``year``
 *      - Cumulative discount factor over period duration [#df_auto]_
 *    * - **df_year**
 *      - ``year``
@@ -974,4 +979,8 @@ Parameters
     cap_comm          'Equivalent to MESSAGE_CAP_COMM'                 / %MESSAGE_CAP_COMM% /
     ctr               counter parameter for loops
     status(*,*)       model solution status parameter for log writing
+;
+
+Scalars
+    regularization_epsilon  quadratic regularization coefficient for QP formulation /1e-6/
 ;

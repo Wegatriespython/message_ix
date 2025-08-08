@@ -323,14 +323,26 @@ Equations
 * """"""""""""""""""
 *
 * The objective function (of the core model) minimizes total discounted systems costs including costs for emissions,
-* relaxations of dynamic constraints
+* relaxations of dynamic constraints, and (optionally) a quadratic regularization term for uniqueness of solution
 *
 * .. math::
-*    \text{OBJ} = \sum_{n,y \in Y^{M}} \text{df_period}_{y} \cdot \text{COST_NODAL}_{n,y}
+*    \text{OBJ} = \sum_{n,y \in Y^{M}} \text{df_period}_{y} \cdot \text{COST_NODAL}_{n,y} 
+*    + \begin{cases} 
+*        \epsilon \left( \sum_{n,c,g,y} \text{EXT}_{n,c,g,y}^2 + \sum_{n,t,y} \text{CAP_NEW}_{n,t,y}^2 + \sum_{n,t,v,y,m,h} \text{ACT}_{n,t,v,y,m,h}^2 + \sum_{n,c,l,y,h} \text{STOCK_CHG}_{n,c,l,y,h}^2 \right) & \text{if QP = 1} \\
+*        0 & \text{if QP = 0}
+*      \end{cases}
 *
 ***
 OBJECTIVE..
-    OBJ =E= SUM( (node,year), df_period(year) * COST_NODAL(node,year) ) ;
+    OBJ =E= SUM( (node,year), df_period(year) * COST_NODAL(node,year) )
+$IF %QP% == 1 + regularization_epsilon * (
+$IF %QP% == 1     SUM( (node,commodity,grade,year)$( map_resource(node,commodity,grade,year) ), SQR( EXT(node,commodity,grade,year) ) )
+$IF %QP% == 1     + SUM( (node,tec,year)$( map_tec(node,tec,year) ), SQR( CAP_NEW(node,tec,year) ) )
+$IF %QP% == 1     + SUM( (node,tec,vintage,year,mode,time)$( map_tec_act(node,tec,year,mode,time) AND map_tec_lifetime(node,tec,vintage,year) ), 
+$IF %QP% == 1         SQR( ACT(node,tec,vintage,year,mode,time) ) )
+$IF %QP% == 1     + SUM( (node,commodity,level,year,time)$( map_commodity(node,commodity,level,year,time) ), SQR( STOCK_CHG(node,commodity,level,year,time) ) )
+$IF %QP% == 1 )
+    ;
 
 ***
 * Regional system cost accounting function
