@@ -15,12 +15,13 @@ option savepoint = 0 ;  # creates a result gdx file after every solve
 
 option ITERLIM = 1e8 ;  # iteration limit
 option RESLIM = 1e6 ;   # resource limit (in seconds; 1e6 is approximately 11 days)
-* solver comments for QCP and PATH:
+* solver comments for LP, QCP, NLP and PATH:
 * - GUROBI, CPLEX and MINOS are fast
 * - CONOPT is slower, but (in non-linear problems) usually more helpful to identify the feasibility problems
 * general comment: sometimes, first using one solver and then another (using the previous solution as starting point)
 * helps even if the previous run did not solve to optimality
 option LP = CPLEX ;
+option QCP = CPLEX ;
 option NLP = CONOPT ;
 option MCP = PATH ;
 

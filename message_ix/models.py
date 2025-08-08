@@ -198,6 +198,14 @@ class GAMSModel(ixmp.model.gams.GAMSModel):
         self.cplex_opts.update(config.get("message solve options") or dict())
         self.cplex_opts.update(model_options.pop("solve_options", {}))
 
+        # Handle QP parameter if provided
+        if "QP" in model_options:
+            qp_value = model_options.pop("QP")
+            # Add QP to gams_args
+            if "gams_args" not in model_options:
+                model_options["gams_args"] = []
+            model_options["gams_args"].append(f"--QP={qp_value}")
+
         super().__init__(name, **model_options)
 
     def run(self, scenario: "ixmp.Scenario") -> None:
