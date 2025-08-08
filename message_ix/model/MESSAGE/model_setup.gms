@@ -21,6 +21,11 @@ $IF NOT SET out      $SETGLOBAL out "output/MsgOutput.gdx"
 * rolling horizon (period-by-period, recursive-dynamic with limited foresight - 'number of years of foresight'
 $IF NOT SET foresight   $SETGLOBAL foresight "0"
 
+** specify whether to use QP (quadratic) or LP (linear) formulation **
+* QP formulation includes quadratic regularization for solution uniqueness
+* Set to "1" for QP, "0" for standard LP (default)
+$IF NOT SET QP         $SETGLOBAL QP "0"
+
 ** specify optional additional calibration output **
 $IF NOT SET calibration $SETGLOBAL calibration ""
 * mark with * to include detailed calibration information in outputs and get an extended GAMS listing (.lst) file
