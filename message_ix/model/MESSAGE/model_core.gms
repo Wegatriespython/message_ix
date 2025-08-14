@@ -338,7 +338,7 @@ OBJECTIVE..
 $IF %QP% == 1 + regularization_epsilon * (
 $IF %QP% == 1     SUM( (node,commodity,grade,year)$( map_resource(node,commodity,grade,year) ), SQR( EXT(node,commodity,grade,year) ) )
 $IF %QP% == 1     + SUM( (node,tec,year)$( map_tec(node,tec,year) ), SQR( CAP_NEW(node,tec,year) ) )
-$IF %QP% == 1     + SUM( (node,tec,vintage,year,mode,time)$( map_tec_act(node,tec,year,mode,time) AND map_tec_lifetime(node,tec,vintage,year) ), 
+$IF %QP% == 1     + SUM( (node,tec,vintage,year,mode,time)$( map_tec_act(node,tec,year,mode,time) AND map_tec_lifetime(node,tec,vintage,year) ),
 $IF %QP% == 1         SQR( ACT(node,tec,vintage,year,mode,time) ) )
 $IF %QP% == 1     + SUM( (node,commodity,level,year,time)$( map_commodity(node,commodity,level,year,time) ), SQR( STOCK_CHG(node,commodity,level,year,time) ) )
 $IF %QP% == 1 )
