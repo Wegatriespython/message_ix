@@ -23,10 +23,10 @@ if (%foresight% = 0,
     year(year_all)$( model_horizon(year_all) ) = yes ;
 
 * write a status update to the log file, solve the model
-$IF %QP% == 1 put_utility 'log' /'+++ Solve the perfect-foresight version of MESSAGEix (QP mode) +++ ' ;
-$IF %QP% == 0 put_utility 'log' /'+++ Solve the perfect-foresight version of MESSAGEix (LP mode) +++ ' ;
-$IF %QP% == 1 Solve MESSAGE_LP using QCP minimizing OBJ ;
-$IF %QP% == 0 Solve MESSAGE_LP using LP minimizing OBJ ;
+$IF %HHI% == 1 put_utility 'log' /'+++ Solve the perfect-foresight version of MESSAGEix (HHI mode) +++ ' ;
+$IF %HHI% == 0 put_utility 'log' /'+++ Solve the perfect-foresight version of MESSAGEix (LP mode) +++ ' ;
+$IF %HHI% == 1 Solve MESSAGE_LP using QCP minimizing OBJ ;
+$IF %HHI% == 0 Solve MESSAGE_LP using LP minimizing OBJ ;
 
 * write model status summary
     status('perfect_foresight','modelstat') = MESSAGE_LP.modelstat ;
@@ -107,11 +107,11 @@ else
             AND duration_period_sum(year_all,year_all2) < %foresight% ) = yes ;
 
 * write a status update and time elapsed to the log file, solve the model
-$IF %QP% == 1 put_utility 'log' /'+++ Solve the recursive-dynamic version of MESSAGEix (QP mode) - iteration ' year_all.tl:0 '  +++ ' ;
-$IF %QP% == 0 put_utility 'log' /'+++ Solve the recursive-dynamic version of MESSAGEix (LP mode) - iteration ' year_all.tl:0 '  +++ ' ;
+$IF %HHI% == 1 put_utility 'log' /'+++ Solve the recursive-dynamic version of MESSAGEix (HHI mode) - iteration ' year_all.tl:0 '  +++ ' ;
+$IF %HHI% == 0 put_utility 'log' /'+++ Solve the recursive-dynamic version of MESSAGEix (LP mode) - iteration ' year_all.tl:0 '  +++ ' ;
         $$INCLUDE includes/aux_computation_time.gms
-$IF %QP% == 1 Solve MESSAGE_LP using QCP minimizing OBJ ;
-$IF %QP% == 0 Solve MESSAGE_LP using LP minimizing OBJ ;
+$IF %HHI% == 1 Solve MESSAGE_LP using QCP minimizing OBJ ;
+$IF %HHI% == 0 Solve MESSAGE_LP using LP minimizing OBJ ;
 
 * write model status summary
         status(year_all,'modelstat') = MESSAGE_LP.modelstat ;

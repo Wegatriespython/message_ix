@@ -52,7 +52,7 @@
 *      - Discount factor for period [#df_auto]_
 *    * - regularization_epsilon
 *      - 
-*      - Quadratic regularization coefficient for QP formulation (default: 1e-6)
+*      - HHI regularization coefficient for share-based regularization (default: 1e-6)
 *      - ``year``
 *      - Cumulative discount factor over period duration [#df_auto]_
 *    * - **df_year**
@@ -982,5 +982,5 @@ Parameters
 ;
 
 Scalars
-    regularization_epsilon  quadratic regularization coefficient for QP formulation /1e-6/
+    regularization_epsilon  HHI regularization coefficient for share-based regularization /1e-6/
 ;
