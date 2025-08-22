@@ -163,6 +163,12 @@ Variables
     GDP(node,year_all)                         gross domestic product (GDP) in market exchange rates for MACRO reporting
 ;
 
+* auxiliary variables for SOCP regularization (share-based L2 penalty)
+$IF %QP% == 1 Positive Variables
+$IF %QP% == 1     Z_REG(node,commodity,level,year_all,time,tec,vintage,mode)   auxiliary variable for rotated SOC constraint per group-activity pair
+$IF %QP% == 1     T_GROUP(node,commodity,level,year_all,time)  total activity for each commodity group
+$IF %QP% == 1 ;
+
 *----------------------------------------------------------------------------------------------------------------------*
 * auxiliary bounds on activity variables (debugging mode, avoid inter-vintage arbitrage, investment technology)                                                        *
 *----------------------------------------------------------------------------------------------------------------------*
@@ -303,6 +309,8 @@ Equations
     STORAGE_BALANCE                 balance of the state of charge of storage
     STORAGE_BALANCE_INIT            balance of the state of charge of storage at sub-annual time slices with initial storage content
     STORAGE_INPUT                   connecting an input commodity to maintain the activity of storage container (not stored commodity)
+$IF %QP% == 1    GROUP_TOTAL_CALC(node,commodity,level,year_all,time)  calculate total activity for each commodity group
+$IF %QP% == 1    ROTATED_SOC_CONSTRAINT(node,commodity,level,year_all,time,tec,vintage,mode)  rotated second-order cone constraint for SOCP regularization per group-activity
 ;
 *----------------------------------------------------------------------------------------------------------------------*
 * equation statements                                                                                                  *
@@ -328,20 +336,17 @@ Equations
 * .. math::
 *    \text{OBJ} = \sum_{n,y \in Y^{M}} \text{df_period}_{y} \cdot \text{COST_NODAL}_{n,y} 
 *    + \begin{cases} 
-*        \epsilon \left( \sum_{n,c,g,y} \text{EXT}_{n,c,g,y}^2 + \sum_{n,t,y} \text{CAP_NEW}_{n,t,y}^2 + \sum_{n,t,v,y,m,h} \text{ACT}_{n,t,v,y,m,h}^2 + \sum_{n,c,l,y,h} \text{STOCK_CHG}_{n,c,l,y,h}^2 \right) & \text{if QP = 1} \\
+*        \epsilon \sum_{n,t,v,y,m,h} \left( \frac{\text{ACT}_{n,t,v,y,m,h}}{\max(\text{CAP}_{n,t,v,y} \cdot \text{capacity_factor}_{n,t,v,y,h} \cdot \text{duration_time}_{h}, \epsilon_{cap})} \right)^2 & \text{if QP = 1} \\
 *        0 & \text{if QP = 0}
 *      \end{cases}
 *
 ***
 OBJECTIVE..
     OBJ =E= SUM( (node,year), df_period(year) * COST_NODAL(node,year) )
-$IF %QP% == 1 + regularization_epsilon * (
-$IF %QP% == 1     SUM( (node,commodity,grade,year)$( map_resource(node,commodity,grade,year) ), SQR( EXT(node,commodity,grade,year) ) )
-$IF %QP% == 1     + SUM( (node,tec,year)$( map_tec(node,tec,year) ), SQR( CAP_NEW(node,tec,year) ) )
-$IF %QP% == 1     + SUM( (node,tec,vintage,year,mode,time)$( map_tec_act(node,tec,year,mode,time) AND map_tec_lifetime(node,tec,vintage,year) ),
-$IF %QP% == 1         SQR( ACT(node,tec,vintage,year,mode,time) ) )
-$IF %QP% == 1     + SUM( (node,commodity,level,year,time)$( map_commodity(node,commodity,level,year,time) ), SQR( STOCK_CHG(node,commodity,level,year,time) ) )
-$IF %QP% == 1 )
+$IF %QP% == 1 + regularization_epsilon * SUM( (node,commodity,level,year,time,tec,vintage,mode)$( 
+$IF %QP% == 1     inv_tec(tec) AND map_tec_act(node,tec,year,mode,time) AND map_tec_lifetime(node,tec,vintage,year)
+$IF %QP% == 1     AND output(node,tec,vintage,year,mode,node,commodity,level,time,time) > 0 ),
+$IF %QP% == 1     Z_REG(node,commodity,level,year,time,tec,vintage,mode) )
     ;
 
 ***
@@ -2487,6 +2492,36 @@ STORAGE_INPUT(node,storage_tec,level,commodity,level_storage,commodity2,mode,yea
               input(location,storage_tec,vintage,year,mode,node,commodity,level,time,time2) ) ),
               duration_time_rel(time,time2) * ACT(location,storage_tec,vintage,year,mode,time) )
 ;
+
+***
+* SOCP Regularization Constraints (QP mode only)
+* ------------------------------------------------
+* Share-based L2 regularization using rotated second-order cone constraints
+* to ensure unique solutions and avoid numerical issues
+***
+
+$IF %QP% == 1 GROUP_TOTAL_CALC(node,commodity,level,year,time)..
+$IF %QP% == 1     T_GROUP(node,commodity,level,year,time) =E=
+$IF %QP% == 1         SUM((tec,vintage,mode)$(
+$IF %QP% == 1             map_tec_lifetime(node,tec,vintage,year) AND 
+$IF %QP% == 1             map_tec_act(node,tec,year,mode,time) AND
+$IF %QP% == 1             output(node,tec,vintage,year,mode,node,commodity,level,time,time) > 0),
+$IF %QP% == 1             ACT(node,tec,vintage,year,mode,time) * 
+$IF %QP% == 1             output(node,tec,vintage,year,mode,node,commodity,level,time,time))
+$IF %QP% == 1 ;
+
+$IF %QP% == 1 ROTATED_SOC_CONSTRAINT(node,commodity,level,year,time,tec,vintage,mode)$(
+$IF %QP% == 1     inv_tec(tec) AND map_tec_act(node,tec,year,mode,time) AND 
+$IF %QP% == 1     map_tec_lifetime(node,tec,vintage,year) AND
+$IF %QP% == 1     output(node,tec,vintage,year,mode,node,commodity,level,time,time) > 0 )..
+$IF %QP% == 1     SQR( SQRT(2) * ACT(node,tec,vintage,year,mode,time) * 
+$IF %QP% == 1          output(node,tec,vintage,year,mode,node,commodity,level,time,time) )
+$IF %QP% == 1     + SQR( T_GROUP(node,commodity,level,year,time) - 
+$IF %QP% == 1            Z_REG(node,commodity,level,year,time,tec,vintage,mode) )
+$IF %QP% == 1     =L= 
+$IF %QP% == 1     SQR( T_GROUP(node,commodity,level,year,time) + 
+$IF %QP% == 1          Z_REG(node,commodity,level,year,time,tec,vintage,mode) )
+$IF %QP% == 1 ;
 
 *----------------------------------------------------------------------------------------------------------------------*
 * model statements                                                                                                     *
