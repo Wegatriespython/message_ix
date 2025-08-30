@@ -97,6 +97,7 @@ Parameters
     duration_time_rel(time,time2)  relative duration of subannual time period ('time2' relative to parent 'time')
     df_period(year_all)            cumulative discount factor over period duration
     df_year(year_all)              discount factor of the last year in the period
+    annuity_factor(year_all)       annuity factor for price normalization (PV of 1 per year over period duration)
 ;
 
 ***

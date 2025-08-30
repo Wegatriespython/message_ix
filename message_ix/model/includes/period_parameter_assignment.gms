@@ -76,25 +76,31 @@ macro_horizon(year_all)$model_horizon(year_all) = yes;
 *df_year(year_all) = POWER( 1 / ( 1+interestrate(year_all) ), sum(year_all2$( ORD(year_all2) < ORD(year_all) ),
 *    duration_period(year_all2) ) ) ;
 
-* compute per-year discount factor (using a recursive method) - set to 1 by default (interest rate = 0)
-df_year(year_all) = 1 ;
+* compute per-year discount factor using cumulative approach for non-uniform periods
+* this approach ensures smooth transitions between periods of different durations
 
-* recursively compute the per-year discount factor
+* Base-year factor - explicitly set first period
+df_year(year_all)$( ORD(year_all) = 1 ) = 1 ;
+
+* Cumulative df_year from the base
 loop(year_all$( ORD(year_all) > 1 ),
-    df_year(year_all) =
-        sum(year_all2$( seq_period(year_all2,year_all) ), df_year(year_all2)
-            * POWER( 1 / ( 1 + interestrate(year_all) ), duration_period(year_all) ) ) ;
+    df_year(year_all) = 1 ;
+    loop(year_all2$( ORD(year_all2) < ORD(year_all) ),
+        df_year(year_all) = df_year(year_all) * POWER( 1 / ( 1 + interestrate(year_all2) ), duration_period(year_all2) ) ;
+    ) ;
 ) ;
 
-* multiply per-year discount factor by discounted period duration
-df_period(year_all) =
-    df_year(year_all) * (
-* multiply the per-year discount factor by the geometric series of over the duration of the period
-        ( ( POWER( 1 + interestrate(year_all) , duration_period(year_all) ) - 1 )
-        / interestrate(year_all) )$( interestrate(year_all) )
-* if interest rate = 0, multiply by the number of years in that period
-        + ( duration_period(year_all) )$( interestrate(year_all) eq 0 ) )
-;
+* Present-value sum of within-period annual factors (PV annuity formula)
+* For r=0: simple multiplication by duration
+df_period(year_all)$( interestrate(year_all) = 0 ) = df_year(year_all) * duration_period(year_all) ;
+* For r>0: use proper PV annuity formula anchored at start of period
+df_period(year_all)$( interestrate(year_all) <> 0 ) = df_year(year_all) 
+    * ( 1 - POWER( 1 + interestrate(year_all), -duration_period(year_all) ) ) / interestrate(year_all) ;
+
+* Annuity factor for proper price normalization (converts PV-per-period duals to annual prices)
+annuity_factor(year_all)$( interestrate(year_all) = 0 ) = duration_period(year_all) ;
+annuity_factor(year_all)$( interestrate(year_all) <> 0 ) = 
+    ( 1 - POWER( 1 + interestrate(year_all), -duration_period(year_all) ) ) / interestrate(year_all) ;
 
 *----------------------------------------------------------------------------------------------------------------------*
 * assignment of auxiliary first-period-per-category mapping and parameters for duration of periods                     *

@@ -44,14 +44,14 @@ EMISSION_CONSTRAINT.m(node,type_emission,type_tec,type_year)$(
         EMISSION_CONSTRAINT.m(node,type_emission,type_tec,type_year) ) =
     EMISSION_CONSTRAINT.m(node,type_emission,type_tec,type_year)
         / SUM(year$( cat_year(type_year,year) ), duration_period(year) )
-        * SUM(year$( map_first_period(type_year,year) ), duration_period(year) / df_period(year) * df_year(year) );
+        * SUM(year$( map_first_period(type_year,year) ), 1 / annuity_factor(year) );
 
 * assign auxiliary variable DEMAND for integration with MACRO
     DEMAND.l(node,commodity,level,year,time) = demand_fixed(node,commodity,level,year,time) ;
 
 * assign auxiliary variables PRICE_COMMODITY and PRICE_EMISSION for reporting
     PRICE_COMMODITY.l(node,commodity,level,year,time) = (
-      - COMMODITY_BALANCE_AUX.M(node,commodity,level,year,time) / df_period(year)
+      - COMMODITY_BALANCE_AUX.M(node,commodity,level,year,time) / annuity_factor(year)
     );
 
 * calculate PRICE_EMISSION based on the marginals of EMISSION_EQUIVALENCE
@@ -59,7 +59,7 @@ EMISSION_CONSTRAINT.m(node,type_emission,type_tec,type_year)$(
          EMISSION_EQUIVALENCE.m(node,emission,type_tec,year) ) ) =
         SMAX(emission$( cat_emission(type_emission,emission) ),
                EMISSION_EQUIVALENCE.m(node,emission,type_tec,year) / emission_scaling(type_emission,emission) )
-            / df_period(year);
+            / annuity_factor(year);
     PRICE_EMISSION.l(node,type_emission,type_tec,year)$(
         ( PRICE_EMISSION.l(node,type_emission,type_tec,year) = eps ) or
         ( PRICE_EMISSION.l(node,type_emission,type_tec,year) = -inf ) ) = 0 ;
