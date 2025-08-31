@@ -109,7 +109,7 @@ def build_scenario(test_mp, years, interestrate):
     )
 
     for i, year in enumerate(years):
-        years_elapsed = year - years[0]  # Calculate years from base year
+        years_elapsed = year - years[0]  # Time elapsed s.t invariant to period length
         demand = 100 * (1.05**years_elapsed)  # Need growth to reproduce the issue.
         scen.add_par(
             "demand",
@@ -191,52 +191,35 @@ def test_price_spike(test_mp, years, interestrate):
 
     prices = scen.var("PRICE_COMMODITY", {"commodity": "electricity"})
 
-    # Print primal variables corresponding to COMMODITY_BALANCE_AUX dual
-    print(f"\n=== PRIMAL VARIABLES FOR COMMODITY_BALANCE_AUX DUAL (Years: {years}, Rate: {interestrate}) ===")
-    
-    # 1. ACT - Activity levels (main primal variable in COMMODITY_BALANCE_AUX)
-    print(f"\nACT (Activity levels - gas technology):")
+    # Collect all data for formatted table output
     act_full = scen.var("ACT", {"technology": "gas"})
+    cap_new_full = scen.var("CAP_NEW", {"technology": "gas"})
+    cap_full = scen.var("CAP", {"technology": "gas"})
+    demand_full = scen.par("demand", {"commodity": "electricity"})
+
+    print(f"\nYears: {years}, Interest Rate: {interestrate}")
+    print("| Year | ACT | CAP_NEW | CAP | Demand | Price |")
+    print("|------|------------|-----------|------------|------------|------------|")
+
     for year in years:
         year_act = act_full[act_full.year_act == year]["lvl"].sum()
-        print(f"  {year}: {year_act:.6f}")
 
-    # 2. COMMODITY_BALANCE - The auxiliary variable marginals
-    print(f"\nCOMMODITY_BALANCE (marginals):")
-    cb_full = scen.var("COMMODITY_BALANCE", {"commodity": "electricity"})
-    for year in years:
-        year_cb_mrg = cb_full[cb_full.year == year]["mrg"].sum()
-        print(f"  {year}: {year_cb_mrg:.6f}")
+        cap_new_data = cap_new_full[cap_new_full.year_vtg == year]
+        year_cap_new = cap_new_data.at[cap_new_data.index[0], "lvl"]
 
-    # 3. CAP_NEW - New capacity installations
-    print(f"\nCAP_NEW (New capacity - gas):")
-    cap_new_full = scen.var("CAP_NEW", {"technology": "gas"})
-    for year in years:
-        year_data = cap_new_full[cap_new_full.year_vtg == year]
-        if not year_data.empty:
-            print(f"  {year}: {year_data.at[year_data.index[0], 'lvl']:.6f}")
-
-    # 4. CAP - Total capacity
-    print(f"\nCAP (Total capacity - gas):")
-    cap_full = scen.var("CAP", {"technology": "gas"})
-    for year in years:
         year_cap = cap_full[cap_full.year_vtg == year]["lvl"].sum()
-        print(f"  {year}: {year_cap:.6f}")
 
-    # 5. Print key parameters for context
-    print(f"\nDemand (parameter):")
-    demand_full = scen.par("demand", {"commodity": "electricity"})
-    for year in years:
         year_demand = demand_full[demand_full.year == year]["value"].sum()
-        print(f"  {year}: {year_demand:.6f}")
 
-    print(f"\nPRICE_COMMODITY:")
-    for year in years:
-        year_data = prices[prices.year == year]
-        if not year_data.empty:
-            print(f"  {year}: {year_data['lvl'].values[0]:.6f}")
+        year_price_data = prices[prices.year == year]
+        year_price = year_price_data["lvl"].values[0]
 
-    print("=" * 80)
+        print(
+            f"| {year} | {year_act:.6f} | {year_cap_new:.6f} | "
+            f"{year_cap:.6f} | {year_demand:.6f} | {year_price:.6f} |"
+        )
+
+    print()
 
     # Check consecutive year price changes
     for i in range(1, len(years)):
