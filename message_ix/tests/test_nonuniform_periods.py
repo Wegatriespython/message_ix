@@ -109,7 +109,8 @@ def build_scenario(test_mp, years, interestrate):
     )
 
     for i, year in enumerate(years):
-        demand = 100 * (1.05**i)  # Need growth to reproduce the issue.
+        years_elapsed = year - years[0]  # Calculate years from base year
+        demand = 100 * (1.05**years_elapsed)  # Need growth to reproduce the issue.
         scen.add_par(
             "demand",
             make_df(
