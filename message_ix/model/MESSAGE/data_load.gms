@@ -130,6 +130,8 @@ Execute_load '%in%',
   relation_new_capacity,
   relation_total_capacity,
   relation_upper,
+  regularization_epsilon,
+  hhi_limit,
   reliability_factor,
   renewable_capacity_factor,
   renewable_potential,
@@ -388,3 +390,10 @@ loop( (node,tec,year_all,commodity,level,time)$(
 if (check,
     abort "There is a problem with assignment of rating bins!" ;
 ) ;
+
+* Initialize hhi_limit to 1 (no constraint) only for undefined elements
+* Check if parameter value is exactly 0 (uninitialized) vs actually set to a value
+hhi_limit(node,commodity,level,year_all,time)$(NOT hhi_limit(node,commodity,level,year_all,time)) = 1;
+
+* Debug output for HHI limit values
+$IF %HHI% == 1 display "HHI limit values after initialization:", hhi_limit;
