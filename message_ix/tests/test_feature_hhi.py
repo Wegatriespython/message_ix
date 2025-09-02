@@ -135,7 +135,7 @@ def _create_hhi_test_scenario(
                     **common,
                     technology=tech,
                     year_vtg=years,
-                    value=20,
+                    value=40,
                     unit="y",
                 ),
             )
@@ -215,7 +215,6 @@ def _create_hhi_test_scenario(
 
         # Add hhi_limit_time if provided
         if hhi_limit_time_value is not None:
-            # Create hhi_limit_time parameter for all nodes
             hhi_data = []
             hhi_data.append(
                 {
@@ -233,8 +232,8 @@ def _create_hhi_test_scenario(
 
 def _calculate_time_hhi(cap_new_data: pd.DataFrame, years: list) -> float:
     """Calculate period-length invariant temporal HHI for investment concentration across time periods.
-    
-    Implements: HHI_time = Σ_y (x_y²/L_y) / T² 
+
+    Implements: HHI_time = Σ_y (x_y²/L_y) / T²
     where x_y = CAP_NEW in year y, L_y = period length, T = Σ_y x_y
 
     Parameters
@@ -261,22 +260,22 @@ def _calculate_time_hhi(cap_new_data: pd.DataFrame, years: list) -> float:
     for year in years:
         if year in year_totals.index:
             x_y = year_totals[year]
-            
+
             # Calculate period length
             if year == years[0]:
                 L_y = years[1] - years[0] if len(years) > 1 else 1
             elif year == years[-1]:
-                L_y = years[-1] - years[-2]  
+                L_y = years[-1] - years[-2]
             else:
                 idx = years.index(year)
                 L_y = years[idx + 1] - year
-                
+
             # Add period-weighted contribution: x_y²/L_y
-            hhi_sum += (x_y ** 2) / L_y
+            hhi_sum += (x_y**2) / L_y
 
     # Period-length invariant HHI = Σ(x_y²/L_y) / T²
-    hhi = hhi_sum / (total_capacity ** 2)
-    
+    hhi = hhi_sum / (total_capacity**2)
+
     return hhi
 
 
@@ -286,25 +285,25 @@ def _calculate_time_hhi(cap_new_data: pd.DataFrame, years: list) -> float:
         # Uniform cases
         pytest.param(
             [2020, 2025, 2030, 2035, 2040, 2045, 2050, 2055, 2060, 2065, 2070],
-            0.6,
-            id="all_5year_hhi_0.6",
+            0.025,
+            id="all_5year_hhi_0.025",
         ),
         pytest.param(
             [2020, 2030, 2040, 2050, 2060, 2070],
-            0.6,
-            id="all_10year_hhi_0.6",
+            0.025,
+            id="all_10year_hhi_0.025",
         ),
         # Non-uniform cases
         pytest.param(
             [2020, 2025, 2030, 2035, 2040, 2050, 2060, 2070],
-            0.6,
-            id="5year_to_10year_hhi_0.6",
+            0.025,
+            id="5year_to_10year_hhi_0.025",
         ),
         # Different HHI limits
         pytest.param(
             [2020, 2025, 2030, 2035, 2040, 2050, 2060, 2070],
-            0.8,
-            id="5year_to_10year_hhi_0.8",
+            0.08,
+            id="5year_to_10year_hhi_0.08",
         ),
         pytest.param(
             [2020, 2025, 2030, 2035, 2040, 2050, 2060, 2070],
@@ -343,7 +342,7 @@ def test_time_hhi_hard_cap(
     """
     # Create scenario with time-HHI limit
     scen = _create_hhi_test_scenario(test_mp, request, years, hhi_limit_time)
-    
+
     # Solve with or without HHI constraint
     if hhi_limit_time is None:
         scen.solve(quiet=True)  # Baseline without HHI
@@ -363,9 +362,9 @@ def test_time_hhi_hard_cap(
 
     total_cap_new_by_year = {}
     for year in years:
-        year_cap_new = cap_new[cap_new.year_vtg == year]
+        year_cap_new = cap_new[(cap_new.year_vtg == year)]
 
-        # Get total capacity across all technologies
+        # Get total capacity across all technologies (excluding World)
         total_cap = year_cap_new["lvl"].sum()
         total_cap_new_by_year[year] = total_cap
 
@@ -385,8 +384,8 @@ def test_time_hhi_hard_cap(
 
     print()
 
-    # Filter for positive new capacity
-    investment_data = cap_new[cap_new["lvl"] > 0].copy()
+    # Filter for positive new capacity and exclude World node
+    investment_data = cap_new[(cap_new["lvl"] > 0)].copy()
 
     # Calculate temporal HHI concentration metric
     temporal_hhi = _calculate_time_hhi(investment_data, years)

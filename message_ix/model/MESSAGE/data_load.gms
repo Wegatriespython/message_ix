@@ -392,7 +392,7 @@ if (check,
 
 * Initialize hhi_limit to 1 (no constraint) only for undefined elements
 * Initialize hhi_limit_time to 1 (no constraint) only for undefined elements
-hhi_limit_time(node)$(NOT hhi_limit_time(node)) = 1;
+* No default assignment - constraint only applies where explicitly set
 
 * Debug output for HHI limit values
 $IF %HHI% == 1 display "Time HHI limit values after initialization:", hhi_limit_time;

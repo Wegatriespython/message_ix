@@ -2500,21 +2500,21 @@ STORAGE_INPUT(node,storage_tec,level,commodity,level_storage,commodity2,mode,yea
 * to ensure unique solutions and avoid numerical issues
 ***
 
-$IF %HHI% == 1 TOT_INV(node)..
+$IF %HHI% == 1 TOT_INV(node)$hhi_limit_time(node)..
 $IF %HHI% == 1     T_INV(node) =E= SUM((yy,tec)$(Y_HHI(yy) AND inv_tec(tec)), CAP_NEW(node,tec,yy))
 $IF %HHI% == 1 ;
 
-$IF %HHI% == 1 ROTATED_SOC_CONSTRAINT(node,y)$(Y_HHI(y))..
+$IF %HHI% == 1 ROTATED_SOC_CONSTRAINT(node,y)$(Y_HHI(y) AND hhi_limit_time(node))..
 $IF %HHI% == 1     SQR( SUM(tec$inv_tec(tec), CAP_NEW(node,tec,y)) / SQRT(L_HHI(y)) )
 $IF %HHI% == 1   =L= 2 * T_INV(node) * Z_REG(node,y)
 $IF %HHI% == 1 ;
 
-$IF %HHI% == 1 HHI_CAP(node)..
+$IF %HHI% == 1 HHI_CAP(node)$hhi_limit_time(node)..
 $IF %HHI% == 1     SUM(y$Y_HHI(y), Z_REG(node,y))
 $IF %HHI% == 1   =L= 0.5 * hhi_limit_time(node) * T_INV(node)
 $IF %HHI% == 1 ;
 
-$IF %HHI% == 1 Z_REG.fx(node,y)$(not Y_HHI(y)) = 0 ;
+$IF %HHI% == 1 Z_REG.fx(node,y)$(not (Y_HHI(y) AND hhi_limit_time(node))) = 0 ;
 
 *----------------------------------------------------------------------------------------------------------------------*
 * model statements                                                                                                     *
