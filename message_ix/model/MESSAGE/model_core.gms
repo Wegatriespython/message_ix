@@ -164,11 +164,16 @@ Variables
 ;
 
 * auxiliary variables for SOCP regularization (share-based L2 penalty)
-* Z_REG: auxiliary variable for rotated SOC constraint per technology (aggregated over vintages/modes)
-* T_GROUP: total activity for each commodity group
-$IF %HHI% == 1 Positive Variables
-$IF %HHI% == 1     Z_REG(node,commodity,level,year_all,time,tec)
-$IF %HHI% == 1     T_GROUP(node,commodity,level,year_all,time)
+* Z_REG: auxiliary variable for rotated SOC constraint per year
+$IF %HHI% == 1 set Y_HHI(y) "years in HHI horizon";
+$IF %HHI% == 1 Y_HHI(y) = yes$ model_horizon(y);
+$IF %HHI% == 1 
+$IF %HHI% == 1 parameter L_HHI(y) "period length (years)";
+$IF %HHI% == 1 L_HHI(y) = duration_period(y);
+$IF %HHI% == 1 
+$IF %HHI% == 1 positive variables
+$IF %HHI% == 1     Z_REG(node,y)          
+$IF %HHI% == 1     T_INV(node)            
 $IF %HHI% == 1 ;
 
 *----------------------------------------------------------------------------------------------------------------------*
@@ -311,9 +316,9 @@ Equations
     STORAGE_BALANCE                 balance of the state of charge of storage
     STORAGE_BALANCE_INIT            balance of the state of charge of storage at sub-annual time slices with initial storage content
     STORAGE_INPUT                   connecting an input commodity to maintain the activity of storage container (not stored commodity)
-$IF %HHI% == 1    GROUP_TOTAL_CALC(node,commodity,level,year_all,time)  calculate total activity for each commodity group
-$IF %HHI% == 1    ROTATED_SOC_CONSTRAINT(node,commodity,level,year_all,time,tec)  rotated second-order cone constraint for technology-level HHI
-$IF %HHI% == 1    HHI_CAP(node,commodity,level,year_all,time)  hard cap on HHI per commodity group
+$IF %HHI% == 1    TOT_INV(node)           
+$IF %HHI% == 1    ROTATED_SOC_CONSTRAINT(node,y)  rotated second-order cone constraint for time-period HHI
+$IF %HHI% == 1    HHI_CAP(node)  hard cap on temporal HHI per node
 ;
 *----------------------------------------------------------------------------------------------------------------------*
 * equation statements                                                                                                  *
@@ -2495,44 +2500,21 @@ STORAGE_INPUT(node,storage_tec,level,commodity,level_storage,commodity2,mode,yea
 * to ensure unique solutions and avoid numerical issues
 ***
 
-$IF %HHI% == 1 GROUP_TOTAL_CALC(node,commodity,level,year,time)..
-$IF %HHI% == 1     T_GROUP(node,commodity,level,year,time) =E=
-$IF %HHI% == 1         SUM((tec,vintage,mode)$(
-$IF %HHI% == 1             map_tec_lifetime(node,tec,vintage,year) AND 
-$IF %HHI% == 1             map_tec_act(node,tec,year,mode,time) AND
-$IF %HHI% == 1             output(node,tec,vintage,year,mode,node,commodity,level,time,time) > 0),
-$IF %HHI% == 1             ACT(node,tec,vintage,year,mode,time) * 
-$IF %HHI% == 1             output(node,tec,vintage,year,mode,node,commodity,level,time,time))
+$IF %HHI% == 1 TOT_INV(node)..
+$IF %HHI% == 1     T_INV(node) =E= SUM((yy,tec)$(Y_HHI(yy) AND inv_tec(tec)), CAP_NEW(node,tec,yy))
 $IF %HHI% == 1 ;
 
-$IF %HHI% == 1 ROTATED_SOC_CONSTRAINT(node,commodity,level,year,time,tec)$(
-$IF %HHI% == 1     inv_tec(tec) AND 
-$IF %HHI% == 1     SUM((vintage,mode)$(map_tec_lifetime(node,tec,vintage,year) AND 
-$IF %HHI% == 1                         map_tec_act(node,tec,year,mode,time) AND
-$IF %HHI% == 1                         output(node,tec,vintage,year,mode,node,commodity,level,time,time) > 0), 1) )..
-$IF %HHI% == 1     SQR( SQRT(2) * SUM((vintage,mode)$(
-$IF %HHI% == 1             map_tec_lifetime(node,tec,vintage,year) AND 
-$IF %HHI% == 1             map_tec_act(node,tec,year,mode,time) AND
-$IF %HHI% == 1             output(node,tec,vintage,year,mode,node,commodity,level,time,time) > 0),
-$IF %HHI% == 1             ACT(node,tec,vintage,year,mode,time) * 
-$IF %HHI% == 1             output(node,tec,vintage,year,mode,node,commodity,level,time,time)) )
-$IF %HHI% == 1     + SQR( T_GROUP(node,commodity,level,year,time) - 
-$IF %HHI% == 1            Z_REG(node,commodity,level,year,time,tec) )
-$IF %HHI% == 1     =L= 
-$IF %HHI% == 1     SQR( T_GROUP(node,commodity,level,year,time) + 
-$IF %HHI% == 1          Z_REG(node,commodity,level,year,time,tec) )
+$IF %HHI% == 1 ROTATED_SOC_CONSTRAINT(node,y)$(Y_HHI(y))..
+$IF %HHI% == 1     SQR( SUM(tec$inv_tec(tec), CAP_NEW(node,tec,y)) / SQRT(L_HHI(y)) )
+$IF %HHI% == 1   =L= 2 * T_INV(node) * Z_REG(node,y)
 $IF %HHI% == 1 ;
 
-$IF %HHI% == 1 HHI_CAP(node,commodity,level,year,time)..
-$IF %HHI% == 1     SUM(tec$(
-$IF %HHI% == 1         inv_tec(tec) AND 
-$IF %HHI% == 1         SUM((vintage,mode)$(map_tec_lifetime(node,tec,vintage,year) AND 
-$IF %HHI% == 1                             map_tec_act(node,tec,year,mode,time) AND
-$IF %HHI% == 1                             output(node,tec,vintage,year,mode,node,commodity,level,time,time) > 0), 1)),
-$IF %HHI% == 1         Z_REG(node,commodity,level,year,time,tec))
-$IF %HHI% == 1     =L= 
-$IF %HHI% == 1     hhi_limit(node,commodity,level,year,time) * T_GROUP(node,commodity,level,year,time) * 0.5
+$IF %HHI% == 1 HHI_CAP(node)..
+$IF %HHI% == 1     SUM(y$Y_HHI(y), Z_REG(node,y))
+$IF %HHI% == 1   =L= 0.5 * hhi_limit_time(node) * T_INV(node)
 $IF %HHI% == 1 ;
+
+$IF %HHI% == 1 Z_REG.fx(node,y)$(not Y_HHI(y)) = 0 ;
 
 *----------------------------------------------------------------------------------------------------------------------*
 * model statements                                                                                                     *

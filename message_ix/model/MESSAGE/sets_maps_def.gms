@@ -174,6 +174,7 @@ Alias(time, time_act, time_od, time2, time3);
 *    and GAMS is case-insensitive
 Alias(year, y_, year2, year3);
 Alias(year_all, vintage, y_all, y_prev, year_all2, year_all3);
+Alias(year_all, y, yy);
 
 *----------------------------------------------------------------------------------------------------------------------*
 * Category types and mappings                                                                                                       *

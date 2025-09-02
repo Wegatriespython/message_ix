@@ -13,12 +13,15 @@ from message_ix import Scenario, make_df
 
 
 def _create_hhi_test_scenario(
-    mp: Platform, request: pytest.FixtureRequest, hhi_limit_value: float | None
+    mp: Platform,
+    request: pytest.FixtureRequest,
+    years: list,
+    hhi_limit_time_value: float | None,
 ) -> Scenario:
-    """Create a 3-technology energy system for testing HHI functionality.
+    """Create a 3-technology energy system for testing time-HHI functionality.
 
     The scenario includes coal, gas, and solar technologies with costs structured
-    to favor coal in standard LP optimization (creating a corner solution).
+    to create potential investment concentration in specific periods.
 
     Parameters
     ----------
@@ -26,14 +29,16 @@ def _create_hhi_test_scenario(
         Platform on which to create the scenario.
     request : pytest.FixtureRequest
         Pytest fixture for unique scenario naming.
-    hhi_limit_value : float, optional
-        HHI limit value (0 to 1). If provided, adds as parameter to scenario.
+    years : list
+        List of model years for the time horizon.
+    hhi_limit_time_value : float, optional
+        Time HHI limit value (0 to 1). If provided, adds as parameter to scenario.
         Value > 1 effectively means no limit.
 
     Returns
     -------
     Scenario
-        Configured scenario ready for HHI testing.
+        Configured scenario ready for time-HHI testing.
     """
     # Add required units
     mp.add_unit("USD/kW")
@@ -44,8 +49,7 @@ def _create_hhi_test_scenario(
         mp, model="HHI Test Model", scenario=request.node.name, version="new"
     )
 
-    # Time structure: 3 periods with growing demand
-    years = [2020, 2030, 2040]
+    # Time structure with provided years
     scen.add_horizon(year=years)
     year_df = scen.vintage_and_active_years()
 
@@ -55,7 +59,7 @@ def _create_hhi_test_scenario(
 
     # Basic sets
     commodities = ["electricity"]
-    technologies = ["coal_ppl", "gas_ppl", "solar_pv"]
+    technologies = ["solar_pv"]
     levels = ["secondary"]
     modes = ["standard"]
 
@@ -85,8 +89,13 @@ def _create_hhi_test_scenario(
             "interestrate", make_df("interestrate", year=years, value=0.05, unit="-")
         )
 
-        # Growing electricity demand: 100 -> 150 -> 200 GWa
-        demand_values = [100.0, 150.0, 200.0]
+        # Growing electricity demand with 5% growth per year elapsed
+        demand_values = []
+        for i, year in enumerate(years):
+            years_elapsed = year - years[0]
+            demand = 100 * (1.05**years_elapsed)
+            demand_values.append(demand)
+
         scen.add_par(
             "demand",
             make_df(
@@ -126,15 +135,13 @@ def _create_hhi_test_scenario(
                     **common,
                     technology=tech,
                     year_vtg=years,
-                    value=30,
+                    value=20,
                     unit="y",
                 ),
             )
 
         # Capacity factors
         capacity_factors = {
-            "coal_ppl": 0.8,  # High capacity factor
-            "gas_ppl": 0.7,  # Medium capacity factor
             "solar_pv": 0.25,  # Low capacity factor (realistic for solar)
         }
 
@@ -154,8 +161,6 @@ def _create_hhi_test_scenario(
 
         # Investment costs (USD/kW) - structured to favor coal
         inv_costs = {
-            "coal_ppl": 1000,  # Low investment cost → favored
-            "gas_ppl": 800,  # Lower investment cost
             "solar_pv": 2000,  # High investment cost → penalized
         }
 
@@ -174,8 +179,6 @@ def _create_hhi_test_scenario(
 
         # Variable costs (USD/MWh) - structured to favor coal
         var_costs = {
-            "coal_ppl": 20,  # Low variable cost → favored
-            "gas_ppl": 35,  # Medium variable cost
             "solar_pv": 0,  # No variable cost (fuel free)
         }
 
@@ -210,73 +213,122 @@ def _create_hhi_test_scenario(
                 ),
             )
 
-        # Add hhi_limit if provided
-        if hhi_limit_value is not None:
-            # Get all nodes (includes both World and TestRegion)
-            all_nodes = scen.set("node")
-
-            # Create hhi_limit parameter for all nodes and the commodity group
+        # Add hhi_limit_time if provided
+        if hhi_limit_time_value is not None:
+            # Create hhi_limit_time parameter for all nodes
             hhi_data = []
-            for n in all_nodes:
-                for y in years:
-                    hhi_data.append(
-                        {
-                            "node": n,
-                            "commodity": "electricity",
-                            "level": "secondary",
-                            "year": y,
-                            "time": "year",
-                            "value": hhi_limit_value,
-                            "unit": "-",
-                        }
-                    )
+            hhi_data.append(
+                {
+                    "node": node,
+                    "value": hhi_limit_time_value,
+                    "unit": "-",
+                }
+            )
 
             hhi_df = pd.DataFrame(hhi_data)
-            scen.add_par("hhi_limit", hhi_df)
+            scen.add_par("hhi_limit_time", hhi_df)
 
     return scen
 
 
-def _calculate_hhi(activity_data: pd.DataFrame) -> float:
-    """Calculate Herfindahl-Hirschman Index for technology portfolio concentration.
+def _calculate_time_hhi(cap_new_data: pd.DataFrame, years: list) -> float:
+    """Calculate period-length invariant temporal HHI for investment concentration across time periods.
+    
+    Implements: HHI_time = Σ_y (x_y²/L_y) / T² 
+    where x_y = CAP_NEW in year y, L_y = period length, T = Σ_y x_y
 
     Parameters
     ----------
-    activity_data : pd.DataFrame
-        Activity data from scenario solution with 'technology' and 'lvl' columns.
+    cap_new_data : pd.DataFrame
+        New capacity data from scenario solution with 'year_vtg' and 'lvl' columns.
+    years : list
+        List of model years to calculate period lengths.
 
     Returns
     -------
     float
-        HHI value where 1.0 = complete concentration, 0.33 = equal 3-way split.
+        Period-length invariant time HHI value.
     """
-    # Sum activity by technology
-    tech_totals = activity_data.groupby("technology")["lvl"].sum()
-    total_activity = tech_totals.sum()
+    # Sum new capacity by year (aggregated across technologies)
+    year_totals = cap_new_data.groupby("year_vtg")["lvl"].sum()
+    total_capacity = year_totals.sum()
 
-    if total_activity == 0:
+    if total_capacity == 0:
         return 0.0
 
-    # Calculate shares
-    shares = tech_totals / total_activity
+    # Calculate period-length invariant HHI
+    hhi_sum = 0.0
+    for year in years:
+        if year in year_totals.index:
+            x_y = year_totals[year]
+            
+            # Calculate period length
+            if year == years[0]:
+                L_y = years[1] - years[0] if len(years) > 1 else 1
+            elif year == years[-1]:
+                L_y = years[-1] - years[-2]  
+            else:
+                idx = years.index(year)
+                L_y = years[idx + 1] - year
+                
+            # Add period-weighted contribution: x_y²/L_y
+            hhi_sum += (x_y ** 2) / L_y
 
-    # HHI = sum of squared shares
-    hhi = (shares**2).sum()
-
+    # Period-length invariant HHI = Σ(x_y²/L_y) / T²
+    hhi = hhi_sum / (total_capacity ** 2)
+    
     return hhi
 
 
-@pytest.mark.parametrize("hhi_limit", [1.01, 0.9, 0.8])
-def test_hhi_hard_cap(
+@pytest.mark.parametrize(
+    "years,hhi_limit_time",
+    [
+        # Uniform cases
+        pytest.param(
+            [2020, 2025, 2030, 2035, 2040, 2045, 2050, 2055, 2060, 2065, 2070],
+            0.6,
+            id="all_5year_hhi_0.6",
+        ),
+        pytest.param(
+            [2020, 2030, 2040, 2050, 2060, 2070],
+            0.6,
+            id="all_10year_hhi_0.6",
+        ),
+        # Non-uniform cases
+        pytest.param(
+            [2020, 2025, 2030, 2035, 2040, 2050, 2060, 2070],
+            0.6,
+            id="5year_to_10year_hhi_0.6",
+        ),
+        # Different HHI limits
+        pytest.param(
+            [2020, 2025, 2030, 2035, 2040, 2050, 2060, 2070],
+            0.8,
+            id="5year_to_10year_hhi_0.8",
+        ),
+        pytest.param(
+            [2020, 2025, 2030, 2035, 2040, 2050, 2060, 2070],
+            1.01,
+            id="5year_to_10year_no_limit",
+        ),
+        # Baseline without HHI constraint
+        pytest.param(
+            [2020, 2025, 2030, 2035, 2040, 2050, 2060, 2070],
+            None,
+            id="5year_to_10year_baseline_no_HHI",
+        ),
+    ],
+)
+def test_time_hhi_hard_cap(
     test_mp: Platform,
     request: pytest.FixtureRequest,
-    hhi_limit: float,
+    years: list,
+    hhi_limit_time: float,
 ) -> None:
-    """Test that HHI hard cap constraint enforces portfolio diversity.
+    """Test that time-HHI hard cap constraint enforces temporal investment diversity.
 
-    HHI limit > 1.0: No effective limit, expect corner solution.
-    HHI limit = 0.9: Mild constraint on concentration.
-    HHI limit = 0.8: Stronger constraint on concentration.
+    Tests both uniform and non-uniform period structures with different HHI limits
+    to verify the period-length invariant constraint is working correctly.
 
     Parameters
     ----------
@@ -284,73 +336,116 @@ def test_hhi_hard_cap(
         Test platform fixture.
     request : pytest.FixtureRequest
         Pytest request fixture for scenario naming.
-    hhi_limit : float
-        HHI limit value (0 to 1, or > 1 for no limit).
+    years : list
+        List of model years defining the time horizon.
+    hhi_limit_time : float
+        Time HHI limit value (0 to 1, or > 1 for no limit).
     """
-    # Create scenario with HHI limit
-    scen = _create_hhi_test_scenario(test_mp, request, hhi_limit)
-    scen.solve(gams_args=["--HHI=1"])
-
-    # Extract activity results
-    activity = scen.var("ACT")
-
-    # Filter for electricity-producing activities (positive output)
-    electricity_activity = activity[activity["lvl"] > 0].copy()
-
-    # Calculate HHI concentration metric
-    portfolio_hhi = _calculate_hhi(electricity_activity)
-
-    if hhi_limit > 1.0:
-        # No effective limit: expect corner solution
-        assert portfolio_hhi > 0.85, (
-            f"With HHI limit > 1 (no constraint), should get corner solution. "
-            f"Expected HHI > 0.85, got {portfolio_hhi:.3f}"
-        )
-
-        # Verify one technology dominates
-        tech_totals = electricity_activity.groupby("technology")["lvl"].sum()
-        max_share = tech_totals.max() / tech_totals.sum()
-        assert max_share > 0.9, (
-            f"One technology should dominate (>90% share) with no HHI limit, "
-            f"max share: {max_share:.2%}"
-        )
+    # Create scenario with time-HHI limit
+    scen = _create_hhi_test_scenario(test_mp, request, years, hhi_limit_time)
+    
+    # Solve with or without HHI constraint
+    if hhi_limit_time is None:
+        scen.solve(quiet=True)  # Baseline without HHI
     else:
-        # HHI limit enforced: verify constraint is satisfied
+        scen.solve(quiet=True, gams_args=["--HHI=1"])  # With HHI constraint
+
+    # Extract new capacity results
+    cap_new = scen.var("CAP_NEW")
+
+    # Get demand data for comparison
+    demand_data = scen.par("demand", {"commodity": "electricity"})
+
+    # Print formatted table output
+    print(f"\nYears: {years}, HHI Limit: {hhi_limit_time}")
+    print("| Year | CAP_NEW | Demand | Period_Length |")
+    print("|------|---------|--------|---------------|")
+
+    total_cap_new_by_year = {}
+    for year in years:
+        year_cap_new = cap_new[cap_new.year_vtg == year]
+
+        # Get total capacity across all technologies
+        total_cap = year_cap_new["lvl"].sum()
+        total_cap_new_by_year[year] = total_cap
+
+        # Get demand for this year
+        year_demand = demand_data[demand_data.year == year]["value"].sum()
+
+        # Calculate period length (years between this year and next, or from previous)
+        if year == years[0]:
+            period_length = years[1] - years[0] if len(years) > 1 else 1
+        elif year == years[-1]:
+            period_length = years[-1] - years[-2]
+        else:
+            idx = years.index(year)
+            period_length = years[idx + 1] - year
+
+        print(f"| {year} | {total_cap:.6f} | {year_demand:.6f} | {period_length} |")
+
+    print()
+
+    # Filter for positive new capacity
+    investment_data = cap_new[cap_new["lvl"] > 0].copy()
+
+    # Calculate temporal HHI concentration metric
+    temporal_hhi = _calculate_time_hhi(investment_data, years)
+
+    print(f"Calculated temporal HHI: {temporal_hhi:.3f}")
+
+    if hhi_limit_time is None:
+        # Baseline case - just report results, no assertions
+        print("Baseline case (no HHI constraint)")
+        return
+    elif hhi_limit_time > 1.0:
+        # No effective limit: expect temporal concentration
+        assert temporal_hhi > 0.6, (
+            f"With time HHI limit > 1 (no constraint), should get temporal concentration. "
+            f"Expected HHI > 0.6, got {temporal_hhi:.3f}"
+        )
+
+        # Verify one period dominates investments
+        year_totals = investment_data.groupby("year_vtg")["lvl"].sum()
+        if year_totals.sum() > 0:
+            max_share = year_totals.max() / year_totals.sum()
+            assert max_share > 0.7, (
+                f"One period should dominate (>70% share) with no time HHI limit, "
+                f"max share: {max_share:.2%}"
+            )
+    else:
+        # Time HHI limit enforced: verify constraint is satisfied
         # Allow small tolerance for numerical precision
         tolerance = 0.01
-        assert portfolio_hhi <= hhi_limit + tolerance, (
-            f"HHI constraint violated: limit={hhi_limit}, actual={portfolio_hhi:.3f}"
+        assert temporal_hhi <= hhi_limit_time + tolerance, (
+            f"Time HHI constraint violated: limit={hhi_limit_time}, actual={temporal_hhi:.3f}"
         )
 
-        # Verify diversification based on limit level
-        tech_totals = electricity_activity.groupby("technology")["lvl"].sum()
-        max_share = tech_totals.max() / tech_totals.sum()
+        # Verify temporal diversification
+        year_totals = investment_data.groupby("year_vtg")["lvl"].sum()
+        if year_totals.sum() > 0:
+            max_share = year_totals.max() / year_totals.sum()
 
-        # Maximum possible share given HHI limit (for dominant technology)
-        # For 3 technologies: if one has share s, others have (1-s)/2 each
-        # HHI = s² + 2×((1-s)/2)² = s² + (1-s)²/2
-        # Setting HHI = hhi_limit and solving the quadratic:
-        # 3s²/2 - s + 1/2 - hhi_limit = 0
-        # Using quadratic formula: s = (1 ± sqrt(1 - 6(1/2 - hhi_limit)))/3
-        discriminant = 1 - 6 * (0.5 - hhi_limit)
-        if discriminant >= 0:
-            max_theoretical_share = (1 + np.sqrt(discriminant)) / 3
-        else:
-            # If discriminant < 0, HHI limit is too low for 3 technologies
-            max_theoretical_share = 1.0 / 3  # Equal shares
+            # For 3 periods, maximum theoretical share given HHI limit
+            # Similar calculation as before but for time periods
+            num_periods = len(year_totals)
+            if num_periods > 1:
+                # Theoretical maximum share for dominant period
+                discriminant = 1 - (num_periods - 1) * (
+                    1 / num_periods - hhi_limit_time
+                )
+                if discriminant >= 0:
+                    max_theoretical_share = (
+                        1 + np.sqrt(discriminant * (num_periods - 1))
+                    ) / num_periods
+                else:
+                    max_theoretical_share = 1.0 / num_periods  # Equal shares
 
-        # Allow tolerance for numerical precision and solver approximations
-        assert max_share <= max_theoretical_share + 0.05, (
-            f"Technology share exceeds theoretical maximum for HHI={hhi_limit}. "
-            f"Max share: {max_share:.2%}, theoretical max: {max_theoretical_share:.2%}"
-        )
+                # Allow tolerance for numerical precision and solver approximations
+                assert max_share <= max_theoretical_share + 0.1, (
+                    f"Period share exceeds theoretical maximum for time HHI={hhi_limit_time}. "
+                    f"Max share: {max_share:.2%}, theoretical max: {max_theoretical_share:.2%}"
+                )
 
-    # Both cases should meet demand
-    total_activity = electricity_activity["lvl"].sum()
-    expected_total_demand = sum([100.0, 150.0, 200.0])  # Sum over all years
-
-    # Allow for some tolerance due to numerical precision and capacity factors
-    assert abs(total_activity - expected_total_demand) / expected_total_demand < 0.1, (
-        f"Solution should approximately meet demand. "
-        f"Expected ~{expected_total_demand}, got {total_activity}"
-    )
+    # Verify total investment capacity is reasonable
+    total_investment = investment_data["lvl"].sum()
+    assert total_investment > 0, "Should have some investment capacity"

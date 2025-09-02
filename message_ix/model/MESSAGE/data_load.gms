@@ -130,8 +130,7 @@ Execute_load '%in%',
   relation_new_capacity,
   relation_total_capacity,
   relation_upper,
-  regularization_epsilon,
-  hhi_limit,
+  hhi_limit_time,
   reliability_factor,
   renewable_capacity_factor,
   renewable_potential,
@@ -392,8 +391,8 @@ if (check,
 ) ;
 
 * Initialize hhi_limit to 1 (no constraint) only for undefined elements
-* Check if parameter value is exactly 0 (uninitialized) vs actually set to a value
-hhi_limit(node,commodity,level,year_all,time)$(NOT hhi_limit(node,commodity,level,year_all,time)) = 1;
+* Initialize hhi_limit_time to 1 (no constraint) only for undefined elements
+hhi_limit_time(node)$(NOT hhi_limit_time(node)) = 1;
 
 * Debug output for HHI limit values
-$IF %HHI% == 1 display "HHI limit values after initialization:", hhi_limit;
+$IF %HHI% == 1 display "Time HHI limit values after initialization:", hhi_limit_time;

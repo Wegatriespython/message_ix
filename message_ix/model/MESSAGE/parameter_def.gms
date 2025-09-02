@@ -981,4 +981,5 @@ Parameters
     status(*,*)       model solution status parameter for log writing
     regularization_epsilon(year_all)  HHI regularization coefficient for share-based regularization
     hhi_limit(node,commodity,level,year_all,time)  Hard cap on HHI for each commodity group (0 to 1)
+    hhi_limit_time(node)                           Hard cap on temporal HHI per node (0 to 1)
 ;
