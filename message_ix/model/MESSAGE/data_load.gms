@@ -390,9 +390,6 @@ if (check,
     abort "There is a problem with assignment of rating bins!" ;
 ) ;
 
-* Initialize hhi_limit to 1 (no constraint) only for undefined elements
-* Check if parameter value is exactly 0 (uninitialized) vs actually set to a value
-hhi_limit(node,commodity,level,year_all,time)$(NOT hhi_limit(node,commodity,level,year_all,time)) = 1;
-
-* Debug output for HHI limit values
-$IF %HHI% == 1 display "HHI limit values after initialization:", hhi_limit;
+* HHI limit values loaded from scenario data
+* No default values assigned - HHI mode activated automatically when hhi_limit values are present
+$IF %HHI% == 1 display "HHI mode active - limit values:", hhi_limit;

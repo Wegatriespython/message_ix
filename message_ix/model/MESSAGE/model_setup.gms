@@ -27,9 +27,10 @@ $IF NOT SET foresight   $SETGLOBAL foresight "0"
 * - "1": solve with these commodity flows.
 $IF NOT SET MESSAGE_CAP_COMM $SETGLOBAL MESSAGE_CAP_COMM "0"
 
-** specify whether to use HHI regularization or standard LP formulation **
-* HHI formulation includes share-based Herfindahl-Hirschman Index regularization for solution uniqueness
-* Set to "1" for HHI regularization, "0" for standard LP (default)
+** HHI hard cap constraints **
+* HHI formulation includes hard caps on Herfindahl-Hirschman Index per commodity group
+* Automatically activated when hhi_limit parameter values are present in scenario data
+* Can be manually overridden: "1" for HHI constraints, "0" for standard LP (default)
 $IF NOT SET HHI         $SETGLOBAL HHI "0"
 
 ** specify optional additional calibration output **

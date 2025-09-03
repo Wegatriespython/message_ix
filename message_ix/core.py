@@ -758,6 +758,20 @@ class Scenario(ixmp.Scenario):
             *model_options* described for :class:`.MESSAGE`, :class:`.MACRO`,
             :class:`.MESSAGE_MACRO`, and :class:`.GAMSModel`.
         """
+        # Auto-detect HHI mode based on hhi_limit parameter with constraint values
+        if "HHI" not in kwargs and model.startswith("MESSAGE"):
+            try:
+                hhi_df = self.par("hhi_limit")
+                # Check if any hhi_limit values are set to constraint values (< 1.0)
+                if not hhi_df.empty and (hhi_df["value"] < 1.0).any():
+                    kwargs["HHI"] = "1"
+                    print("HHI activated based on hhi_limit values")
+                else:
+                    kwargs["HHI"] = "0"
+            except (KeyError, RuntimeError):
+                # hhi_limit parameter not present or no data
+                kwargs["HHI"] = "0"
+
         super().solve(model=model, solve_options=solve_options, **kwargs)
 
     def add_macro(

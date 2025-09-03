@@ -25,18 +25,24 @@ if (%foresight% = 0,
 * write a status update to the log file, solve the model
 $IF %HHI% == 1 put_utility 'log' /'+++ Solve the perfect-foresight version of MESSAGEix (HHI mode) +++ ' ;
 $IF %HHI% == 0 put_utility 'log' /'+++ Solve the perfect-foresight version of MESSAGEix (LP mode) +++ ' ;
-$IF %HHI% == 1 Solve MESSAGE_LP using QCP minimizing OBJ ;
+$IF %HHI% == 1 Solve MESSAGE_SOCP using QCP minimizing OBJ ;
 $IF %HHI% == 0 Solve MESSAGE_LP using LP minimizing OBJ ;
 
 * write model status summary
-    status('perfect_foresight','modelstat') = MESSAGE_LP.modelstat ;
-    status('perfect_foresight','solvestat') = MESSAGE_LP.solvestat ;
-    status('perfect_foresight','resUsd')    = MESSAGE_LP.resUsd ;
-    status('perfect_foresight','objEst')    = MESSAGE_LP.objEst ;
-    status('perfect_foresight','objVal')    = MESSAGE_LP.objVal ;
+$IF %HHI% == 0    status('perfect_foresight','modelstat') = MESSAGE_LP.modelstat ;
+$IF %HHI% == 0    status('perfect_foresight','solvestat') = MESSAGE_LP.solvestat ;
+$IF %HHI% == 0    status('perfect_foresight','resUsd')    = MESSAGE_LP.resUsd ;
+$IF %HHI% == 0    status('perfect_foresight','objEst')    = MESSAGE_LP.objEst ;
+$IF %HHI% == 0    status('perfect_foresight','objVal')    = MESSAGE_LP.objVal ;
+$IF %HHI% == 1    status('perfect_foresight','modelstat') = MESSAGE_SOCP.modelstat ;
+$IF %HHI% == 1    status('perfect_foresight','solvestat') = MESSAGE_SOCP.solvestat ;
+$IF %HHI% == 1    status('perfect_foresight','resUsd')    = MESSAGE_SOCP.resUsd ;
+$IF %HHI% == 1    status('perfect_foresight','objEst')    = MESSAGE_SOCP.objEst ;
+$IF %HHI% == 1    status('perfect_foresight','objVal')    = MESSAGE_SOCP.objVal ;
 
 * write an error message if model did not solve to optimality
-    IF( NOT ( MESSAGE_LP.modelstat = 1 OR MESSAGE_LP.modelstat = 8 ),
+$IF %HHI% == 0    IF( NOT ( MESSAGE_LP.modelstat = 1 OR MESSAGE_LP.modelstat = 8 ),
+$IF %HHI% == 1    IF( NOT ( MESSAGE_SOCP.modelstat = 1 OR MESSAGE_SOCP.modelstat = 8 ),
         put_utility 'log' /'+++ MESSAGEix did not solve to optimality - run is aborted, no output produced! +++ ' ;
         ABORT "MESSAGEix did not solve to optimality!"
     ) ;
@@ -110,18 +116,24 @@ else
 $IF %HHI% == 1 put_utility 'log' /'+++ Solve the recursive-dynamic version of MESSAGEix (HHI mode) - iteration ' year_all.tl:0 '  +++ ' ;
 $IF %HHI% == 0 put_utility 'log' /'+++ Solve the recursive-dynamic version of MESSAGEix (LP mode) - iteration ' year_all.tl:0 '  +++ ' ;
         $$INCLUDE includes/aux_computation_time.gms
-$IF %HHI% == 1 Solve MESSAGE_LP using QCP minimizing OBJ ;
+$IF %HHI% == 1 Solve MESSAGE_SOCP using QCP minimizing OBJ ;
 $IF %HHI% == 0 Solve MESSAGE_LP using LP minimizing OBJ ;
 
 * write model status summary
-        status(year_all,'modelstat') = MESSAGE_LP.modelstat ;
-        status(year_all,'solvestat') = MESSAGE_LP.solvestat ;
-        status(year_all,'resUsd')    = MESSAGE_LP.resUsd ;
-        status(year_all,'objEst')    = MESSAGE_LP.objEst ;
-        status(year_all,'objVal')    = MESSAGE_LP.objVal ;
+$IF %HHI% == 0        status(year_all,'modelstat') = MESSAGE_LP.modelstat ;
+$IF %HHI% == 0        status(year_all,'solvestat') = MESSAGE_LP.solvestat ;
+$IF %HHI% == 0        status(year_all,'resUsd')    = MESSAGE_LP.resUsd ;
+$IF %HHI% == 0        status(year_all,'objEst')    = MESSAGE_LP.objEst ;
+$IF %HHI% == 0        status(year_all,'objVal')    = MESSAGE_LP.objVal ;
+$IF %HHI% == 1        status(year_all,'modelstat') = MESSAGE_SOCP.modelstat ;
+$IF %HHI% == 1        status(year_all,'solvestat') = MESSAGE_SOCP.solvestat ;
+$IF %HHI% == 1        status(year_all,'resUsd')    = MESSAGE_SOCP.resUsd ;
+$IF %HHI% == 1        status(year_all,'objEst')    = MESSAGE_SOCP.objEst ;
+$IF %HHI% == 1        status(year_all,'objVal')    = MESSAGE_SOCP.objVal ;
 
 * write an error message AND ABORT THE SOLVE LOOP if model did not solve to optimality
-        IF( NOT ( MESSAGE_LP.modelstat = 1 OR MESSAGE_LP.modelstat = 8 ),
+$IF %HHI% == 0        IF( NOT ( MESSAGE_LP.modelstat = 1 OR MESSAGE_LP.modelstat = 8 ),
+$IF %HHI% == 1        IF( NOT ( MESSAGE_SOCP.modelstat = 1 OR MESSAGE_SOCP.modelstat = 8 ),
             put_utility 'log' /'+++ MESSAGEix did not solve to optimality - run is aborted, no output produced! +++ ' ;
             ABORT "MESSAGEix did not solve to optimality!"
         ) ;

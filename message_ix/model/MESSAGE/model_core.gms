@@ -163,7 +163,7 @@ Variables
     GDP(node,year_all)                         gross domestic product (GDP) in market exchange rates for MACRO reporting
 ;
 
-* auxiliary variables for SOCP regularization (share-based L2 penalty)
+* auxiliary variables for HHI hard cap constraints
 * Z_REG: auxiliary variable for rotated SOC constraint per technology (aggregated over vintages/modes)
 * T_GROUP: total activity for each commodity group
 $IF %HHI% == 1 Positive Variables
@@ -2489,10 +2489,10 @@ STORAGE_INPUT(node,storage_tec,level,commodity,level_storage,commodity2,mode,yea
 ;
 
 ***
-* SOCP Regularization Constraints (HHI mode only)
-* ------------------------------------------------
-* Share-based L2 regularization using rotated second-order cone constraints
-* to ensure unique solutions and avoid numerical issues
+* HHI Hard Cap Constraints (HHI mode only)
+* ------------------------------------------
+* Herfindahl-Hirschman Index hard caps per commodity group using rotated second-order cone constraints
+* Prevents excessive market concentration by limiting technology shares
 ***
 
 $IF %HHI% == 1 GROUP_TOTAL_CALC(node,commodity,level,year,time)..
@@ -2538,8 +2538,13 @@ $IF %HHI% == 1 ;
 * model statements                                                                                                     *
 *----------------------------------------------------------------------------------------------------------------------*
 
-Model MESSAGE_LP / all / ;
+$IF %HHI% == 0 Model MESSAGE_LP / all / ;
+$IF %HHI% == 1 Model MESSAGE_SOCP / all / ;
 
-MESSAGE_LP.holdfixed = 1 ;
-MESSAGE_LP.optfile = 1 ;
-MESSAGE_LP.optcr = 0 ;
+$IF %HHI% == 0 MESSAGE_LP.holdfixed = 1 ;
+$IF %HHI% == 0 MESSAGE_LP.optfile = 1 ;
+$IF %HHI% == 0 MESSAGE_LP.optcr = 0 ;
+
+$IF %HHI% == 1 MESSAGE_SOCP.holdfixed = 1 ;
+$IF %HHI% == 1 MESSAGE_SOCP.optfile = 1 ;
+$IF %HHI% == 1 MESSAGE_SOCP.optcr = 0 ;
