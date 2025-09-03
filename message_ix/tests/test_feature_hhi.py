@@ -212,24 +212,20 @@ def _create_hhi_test_scenario(
 
         # Add hhi_limit if provided
         if hhi_limit_value is not None:
-            # Get all nodes (includes both World and TestRegion)
-            all_nodes = scen.set("node")
-
             # Create hhi_limit parameter for all nodes and the commodity group
             hhi_data = []
-            for n in all_nodes:
-                for y in years:
-                    hhi_data.append(
-                        {
-                            "node": n,
-                            "commodity": "electricity",
-                            "level": "secondary",
-                            "year": y,
-                            "time": "year",
-                            "value": hhi_limit_value,
-                            "unit": "-",
-                        }
-                    )
+            for y in years:
+                hhi_data.append(
+                    {
+                        "node": node,
+                        "commodity": "electricity",
+                        "level": "secondary",
+                        "year": y,
+                        "time": "year",
+                        "value": hhi_limit_value,
+                        "unit": "-",
+                    }
+                )
 
             hhi_df = pd.DataFrame(hhi_data)
             scen.add_par("hhi_limit", hhi_df)
@@ -289,7 +285,7 @@ def test_hhi_hard_cap(
     """
     # Create scenario with HHI limit
     scen = _create_hhi_test_scenario(test_mp, request, hhi_limit)
-    scen.solve(gams_args=["--HHI=1"])
+    scen.solve(quiet=True, gams_args=["--HHI=1"])
 
     # Extract activity results
     activity = scen.var("ACT")

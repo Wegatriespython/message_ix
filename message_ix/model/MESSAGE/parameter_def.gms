@@ -50,9 +50,6 @@
 *    * - **df_period**
 *      - ``year``
 *      - Discount factor for period [#df_auto]_
-*    * - regularization_epsilon
-*      - 
-*      - HHI regularization coefficient for share-based regularization (default: 1e-6)
 *      - ``year``
 *      - Cumulative discount factor over period duration [#df_auto]_
 *    * - **df_year**
@@ -979,6 +976,5 @@ Parameters
     cap_comm          'Equivalent to MESSAGE_CAP_COMM'                 / %MESSAGE_CAP_COMM% /
     ctr               counter parameter for loops
     status(*,*)       model solution status parameter for log writing
-    regularization_epsilon(year_all)  HHI regularization coefficient for share-based regularization
     hhi_limit(node,commodity,level,year_all,time)  Hard cap on HHI for each commodity group (0 to 1)
 ;
