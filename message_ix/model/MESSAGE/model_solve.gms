@@ -45,7 +45,11 @@ $IF %HHI% == 0    IF( NOT ( MESSAGE_LP.modelstat = 1 OR MESSAGE_LP.modelstat = 8
 $IF %HHI% == 1    IF( NOT ( MESSAGE_SOCP.modelstat = 1 OR MESSAGE_SOCP.modelstat = 8 ),
         put_utility 'log' /'+++ MESSAGEix did not solve to optimality - run is aborted, no output produced! +++ ' ;
         ABORT "MESSAGEix did not solve to optimality!"
-    ) ;
+$IF %HHI% == 0    ) ;
+$IF %HHI% == 1    ) ;
+
+* Include HHI post-solve diagnostics when HHI mode is enabled
+* $IF %HHI% == 1 $INCLUDE MESSAGE/hhi_postsolve.gms
 
 * rescale the dual of the emission constraint to account that the constraint is defined on the average year, not total
 EMISSION_CONSTRAINT.m(node,type_emission,type_tec,type_year)$(
