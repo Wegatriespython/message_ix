@@ -48,8 +48,6 @@ $IF %HHI% == 1    IF( NOT ( MESSAGE_SOCP.modelstat = 1 OR MESSAGE_SOCP.modelstat
 $IF %HHI% == 0    ) ;
 $IF %HHI% == 1    ) ;
 
-* Include HHI post-solve diagnostics when HHI mode is enabled
-* $IF %HHI% == 1 $INCLUDE MESSAGE/hhi_postsolve.gms
 
 * rescale the dual of the emission constraint to account that the constraint is defined on the average year, not total
 EMISSION_CONSTRAINT.m(node,type_emission,type_tec,type_year)$(

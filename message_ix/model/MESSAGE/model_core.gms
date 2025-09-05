@@ -164,26 +164,7 @@ Variables
 ;
 
 
-* HHI constraints module - included when HHI mode is enabled
-* HHI_MODE controls which implementation to use:
-*   HHI_MODE=0: Use advanced Y_TEC intermediate variable formulation (model_hhi_alt.gms)
-*   HHI_MODE=1: Output filtering only - filter by destination node (model_hhi1.gms)
-*   HHI_MODE=2: Positive activity only - filter by positive values (model_hhi2.gms)
-*   HHI_MODE=99: Simple direct aggregation (model_hhi_simple.gms)
-* HHI_SIMPLE is legacy parameter mapped to HHI_MODE for backwards compatibility
-$IF NOT SET HHI_MODE $IF SET HHI_SIMPLE $IF %HHI_SIMPLE% == 0 $SETGLOBAL HHI_MODE "0"
-$IF NOT SET HHI_MODE $IF SET HHI_SIMPLE $IF %HHI_SIMPLE% == 1 $SETGLOBAL HHI_MODE "99"
-$IF NOT SET HHI_MODE $SETGLOBAL HHI_MODE "99"
-
-$IF %HHI% == 1 $IF %HHI_MODE% == 0 put_utility 'log' /'HHI mode enabled: Using advanced Y_TEC formulation (HHI_MODE=0)' ;
-$IF %HHI% == 1 $IF %HHI_MODE% == 1 put_utility 'log' /'HHI mode enabled: Using output filtering only (HHI_MODE=1)' ;
-$IF %HHI% == 1 $IF %HHI_MODE% == 2 put_utility 'log' /'HHI mode enabled: Using positive activity filtering only (HHI_MODE=2)' ;
-$IF %HHI% == 1 $IF %HHI_MODE% == 99 put_utility 'log' /'HHI mode enabled: Using simplified direct aggregation (HHI_MODE=99)' ;
-
-$IF %HHI% == 1 $IF %HHI_MODE% == 0 $INCLUDE MESSAGE/model_hhi_alt.gms
-$IF %HHI% == 1 $IF %HHI_MODE% == 1 $INCLUDE MESSAGE/model_hhi1.gms
-$IF %HHI% == 1 $IF %HHI_MODE% == 2 $INCLUDE MESSAGE/model_hhi2.gms
-$IF %HHI% == 1 $IF %HHI_MODE% == 99 $INCLUDE MESSAGE/model_hhi_simple.gms
+$IF %HHI% == 1 $INCLUDE MESSAGE/model_hhi.gms
 
 *----------------------------------------------------------------------------------------------------------------------*
 * auxiliary bounds on activity variables (debugging mode, avoid inter-vintage arbitrage, investment technology)                                                        *
