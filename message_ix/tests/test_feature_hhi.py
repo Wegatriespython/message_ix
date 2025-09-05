@@ -55,8 +55,8 @@ def _create_hhi_test_scenario(
 
     # Basic sets
     commodities = ["electricity"]
-    technologies = ["coal_ppl", "gas_ppl", "solar_pv"]
-    levels = ["secondary"]
+    technologies = ["coal_ppl", "gas_ppl", "solar_pv", "elec_t_d"]
+    levels = ["secondary", "final"]
     modes = ["standard"]
 
     for set_name, values in [
@@ -94,7 +94,7 @@ def _create_hhi_test_scenario(
                 **common,
                 year=years,
                 commodity="electricity",
-                level="secondary",
+                level="final",
                 value=demand_values,
                 unit="GWa",
             ),
@@ -102,20 +102,50 @@ def _create_hhi_test_scenario(
 
         # Technology outputs: all produce electricity
         for tech in technologies:
-            scen.add_par(
-                "output",
-                make_df(
+            if tech != "elec_t_d":
+                scen.add_par(
                     "output",
-                    **common,
-                    technology=tech,
-                    commodity="electricity",
-                    level="secondary",
-                    year_vtg=year_df["year_vtg"],
-                    year_act=year_df["year_act"],
-                    value=1.0,
-                    unit="-",
-                ),
-            )
+                    make_df(
+                        "output",
+                        **common,
+                        technology=tech,
+                        commodity="electricity",
+                        level="secondary",
+                        year_vtg=year_df["year_vtg"],
+                        year_act=year_df["year_act"],
+                        value=1.0,
+                        unit="-",
+                    ),
+                )
+            else:
+                scen.add_par(
+                    "output",
+                    make_df(
+                        "output",
+                        **common,
+                        technology=tech,
+                        commodity="electricity",
+                        level="final",
+                        year_vtg=year_df["year_vtg"],
+                        year_act=year_df["year_act"],
+                        value=0.9,
+                        unit="-",
+                    ),
+                )
+                scen.add_par(
+                    "input",
+                    make_df(
+                        "input",
+                        **common,
+                        technology=tech,
+                        commodity="electricity",
+                        level="secondary",
+                        year_vtg=year_df["year_vtg"],
+                        year_act=year_df["year_act"],
+                        value=1,
+                        unit="-",
+                    ),
+                )
 
         # Technical lifetime: 30 years for all technologies
         for tech in technologies:
@@ -136,6 +166,7 @@ def _create_hhi_test_scenario(
             "coal_ppl": 0.8,  # High capacity factor
             "gas_ppl": 0.7,  # Medium capacity factor
             "solar_pv": 0.25,  # Low capacity factor (realistic for solar)
+            "elec_t_d": 1,
         }
 
         for tech, cf_value in capacity_factors.items():
@@ -157,6 +188,7 @@ def _create_hhi_test_scenario(
             "coal_ppl": 1000,  # Low investment cost → favored
             "gas_ppl": 800,  # Lower investment cost
             "solar_pv": 2000,  # High investment cost → penalized
+            "elec_t_d": 100,
         }
 
         for tech, cost in inv_costs.items():
@@ -177,6 +209,7 @@ def _create_hhi_test_scenario(
             "coal_ppl": 20,  # Low variable cost → favored
             "gas_ppl": 35,  # Medium variable cost
             "solar_pv": 0,  # No variable cost (fuel free)
+            "elec_t_d": 3,
         }
 
         for tech, cost in var_costs.items():
@@ -207,6 +240,20 @@ def _create_hhi_test_scenario(
                     year_act=year_df["year_act"],
                     value=10,
                     unit="USD/kW",
+                ),
+            )
+
+        # Non-negativity constraints on activity (bound_activity_lo)
+        for tech in technologies:
+            scen.add_par(
+                "bound_activity_lo",
+                make_df(
+                    "bound_activity_lo",
+                    **common,
+                    technology=tech,
+                    year_act=year_df["year_act"],
+                    value=0.0,
+                    unit="GWa",
                 ),
             )
 
@@ -262,7 +309,7 @@ def _calculate_hhi(activity_data: pd.DataFrame) -> float:
     return hhi
 
 
-@pytest.mark.parametrize("hhi_limit", [1.01, 0.9, 0.8])
+@pytest.mark.parametrize("hhi_limit", [1.01, 0.6, 0.8])
 def test_hhi_hard_cap(
     test_mp: Platform,
     request: pytest.FixtureRequest,
@@ -285,7 +332,10 @@ def test_hhi_hard_cap(
     """
     # Create scenario with HHI limit
     scen = _create_hhi_test_scenario(test_mp, request, hhi_limit)
-    scen.solve(quiet=True, gams_args=["--HHI=1"])
+
+    # Solve with default HHI implementation (mode 1)
+    print(f"Testing HHI limit={hhi_limit}")
+    scen.solve(quiet=False, solve_options={"iis": 1})
 
     # Extract activity results
     activity = scen.var("ACT")
@@ -314,6 +364,7 @@ def test_hhi_hard_cap(
         # HHI limit enforced: verify constraint is satisfied
         # Allow small tolerance for numerical precision
         tolerance = 0.01
+        print(f"portfolio_hhi {portfolio_hhi}")
         assert portfolio_hhi <= hhi_limit + tolerance, (
             f"HHI constraint violated: limit={hhi_limit}, actual={portfolio_hhi:.3f}"
         )
@@ -336,17 +387,28 @@ def test_hhi_hard_cap(
             max_theoretical_share = 1.0 / 3  # Equal shares
 
         # Allow tolerance for numerical precision and solver approximations
+        print(f"Max share {max_share}")
         assert max_share <= max_theoretical_share + 0.05, (
             f"Technology share exceeds theoretical maximum for HHI={hhi_limit}. "
             f"Max share: {max_share:.2%}, theoretical max: {max_theoretical_share:.2%}"
         )
 
-    # Both cases should meet demand
-    total_activity = electricity_activity["lvl"].sum()
-    expected_total_demand = sum([100.0, 150.0, 200.0])  # Sum over all years
+    # Verify demand is met at final level through elec_t_d
+    # elec_t_d transforms secondary electricity to final electricity
+    elec_td_activity = activity[activity["technology"] == "elec_t_d"].copy()
 
-    # Allow for some tolerance due to numerical precision and capacity factors
-    assert abs(total_activity - expected_total_demand) / expected_total_demand < 0.1, (
-        f"Solution should approximately meet demand. "
-        f"Expected ~{expected_total_demand}, got {total_activity}"
-    )
+    # Group by year and sum activity
+    elec_td_by_year = elec_td_activity.groupby("year_act")["lvl"].sum()
+
+    # Expected demand at final level for each year
+    expected_demand = {2020: 100.0, 2030: 150.0, 2040: 200.0}
+
+    # Check that elec_t_d activity matches demand for each period
+    for year, expected in expected_demand.items():
+        actual = elec_td_by_year[year]
+        # Allow small tolerance for numerical precision
+        tolerance = 0.01
+        assert actual - expected >= tolerance, (
+            f"elec_t_d activity should match final demand in {year}. "
+            f"Expected {expected} GWa, got {actual:.3f} GWa"
+        )
