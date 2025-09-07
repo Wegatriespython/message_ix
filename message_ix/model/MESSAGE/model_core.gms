@@ -947,82 +947,9 @@ MIN_UTILIZATION_CONSTRAINT(node,inv_tec,vintage,year)$( map_tec_lifetime(node,in
         min_utilization_factor(node,inv_tec,vintage,year) * CAP(node,inv_tec,vintage,year) ;
 
 *----------------------------------------------------------------------------------------------------------------------*
-***
-* .. _section_renewable_integration:
-*
-* Constraints representing renewable integration
-* ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
-*
-* .. _equation_renewables_equivalence:
-*
-* Equation RENEWABLES_EQUIVALENCE
-* """""""""""""""""""""""""""""""
-* This constraint defines the auxiliary variables :math:`\text{REN}`
-* to be equal to the output of renewable technologies (summed over grades).
-*
-*  .. math::
-*     \sum_{g} \text{REN}_{n,t,c,g,y,h} \leq
-*     \sum_{\substack{n,t,m,l,h,h^{\text{OD}} \\ y^V \leq y  \\ \ l \in L^{\text{REN}} \subseteq L }}
-*         \text{input}_{n^L,t,y^V,y,m,n,c,l,h,h^{\text{OD}}} \cdot \text{ACT}_{n^L,t,m,y,h}
-*
-* The set :math:`L^{\text{REN}} \subseteq L` denotes all levels for which the detailed representation of renewables applies.
-***
-RENEWABLES_EQUIVALENCE(node,renewable_tec,commodity,year,time)$(
-        map_tec(node,renewable_tec,year) AND map_ren_com(node,renewable_tec,commodity,year) )..
-    SUM(grade$( map_ren_grade(node,commodity,grade,year) ), REN(node,renewable_tec,commodity,grade,year,time) )
-    =E= SUM((location,vintage,mode,level_renewable,time_act)$(
-                 map_tec_act(node,renewable_tec,year,mode,time_act)
-                 AND map_tec_lifetime(node,renewable_tec,vintage,year) ),
-        input(location,renewable_tec,vintage,year,mode,node,commodity,level_renewable,time_act,time)
-        * ACT(location,renewable_tec,vintage,year,mode,time_act) ) ;
-
-***
-* .. _equation_renewables_potential_constraint:
-*
-* Equation RENEWABLES_POTENTIAL_CONSTRAINT
-* """"""""""""""""""""""""""""""""""""""""
-* This constraint sets the potential potential by grade as the upper bound for the auxiliary variable :math:`REN`.
-*
-*  .. math::
-*     \sum_{\substack{t,h \\ \ t \in T^{R} \subseteq t }} \text{REN}_{n,t,c,g,y,h}
-*         \leq \sum_{\substack{l \\ l \in L^{R} \subseteq L }} \text{renewable_potential}_{n,c,g,l,y}
-*
-***
-RENEWABLES_POTENTIAL_CONSTRAINT(node,commodity,grade,year)$( map_ren_grade(node,commodity,grade,year) )..
-    SUM((renewable_tec,time)$( map_ren_com(node,renewable_tec,commodity,year) ),
-        REN(node,renewable_tec,commodity,grade,year,time) )
-    =L= SUM(level_renewable, renewable_potential(node,commodity,grade,level_renewable,year) ) ;
-
-***
-* .. _equation_renewables_capacity_requirement:
-*
-* Equation RENEWABLES_CAPACITY_REQUIREMENT
-* """"""""""""""""""""""""""""""""""""""""
-* This constraint connects the capacity factor of a renewable grade to the
-* installed capacity of a technology. It sets the lower limit for the capacity
-* of a renewable technology to the summed activity over all grades (REN) devided
-* by the capactiy factor of this grade.
-* It represents the fact that different renewable grades require different installed
-* capacities to provide their full potential.
-*
-*  .. math::
-*     \sum_{y^V, h} & \text{CAP}_{n,t,y^V,y} \cdot \text{operation_factor}_{n,t,y^V,y} \cdot \text{capacity_factor}_{n,t,y^V,y,h} \\
-*        & \quad \geq \sum_{g,h,l} \frac{1}{\text{renewable_capacity_factor}_{n,c,g,l,y}} \cdot \text{REN}_{n,t,c,g,y,h}
-*
-* This constraint is only active if :math:`\text{renewable_capacity_factor}_{n,c,g,l,y}` is defined.
-***
-RENEWABLES_CAPACITY_REQUIREMENT(node,inv_tec,commodity,year)$(
-        SUM( (vintage,mode,time,grade,level_renewable),
-            map_tec_lifetime(node,inv_tec,vintage,year) AND map_tec_act(node,inv_tec,year,mode,time)
-            AND map_ren_com(node,inv_tec,commodity,year)
-            AND renewable_capacity_factor(node,commodity,grade,level_renewable,year) > 0 ) )..
-    SUM( (vintage,time)$map_ren_com(node,inv_tec,commodity,year),
-        CAP(node,inv_tec,vintage,year)
-        * operation_factor(node,inv_tec,vintage,year)
-        * capacity_factor(node,inv_tec,vintage,year,time) )
-    =G= SUM((grade,time,level_renewable)$(renewable_capacity_factor(node,commodity,grade,level_renewable,year) > 0),
-            REN(node,inv_tec,commodity,grade,year,time)
-                 / renewable_capacity_factor(node,commodity,grade,level_renewable,year)) ;
+* Include renewables module
+*----------------------------------------------------------------------------------------------------------------------*
+$INCLUDE MESSAGE/renewables.gms
 
 *----------------------------------------------------------------------------------------------------------------------*
 ***
