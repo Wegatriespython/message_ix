@@ -501,71 +501,16 @@ COST_ACCOUNTING_NODAL(node, year)..
 *
 * The set :math:`L^{\text{RES}} \subseteq L` denotes all levels for which the detailed representation of resources applies.
 ***
-EXTRACTION_EQUIVALENCE(node,commodity,year)..
-    SUM(grade$( map_resource(node,commodity,grade,year) ), EXT(node,commodity,grade,year) )
-    =G= SUM((location,tec,vintage,mode,level_resource,time_act,time_od)$( map_tec_act(node,tec,year,mode,time_act)
-            AND map_tec_lifetime(node,tec,vintage,year) ),
-        input(location,tec,vintage,year,mode,node,commodity,level_resource,time_act,time_od)
-        * ACT(location,tec,vintage,year,mode,time_act) ) ;
 
-***
-* .. _equation_extraction_bound_up:
-*
-* Equation EXTRACTION_BOUND_UP
-* """"""""""""""""""""""""""""
-*
-* This constraint specifies an upper bound on resource extraction by grade.
-*
-*  .. math::
-*     \text{EXT}_{n,c,g,y} \leq \text{bound_extraction_up}_{n,c,g,y}
-*
-***
-EXTRACTION_BOUND_UP(node,commodity,grade,year)$( map_resource(node,commodity,grade,year)
-        AND is_bound_extraction_up(node,commodity,grade,year) )..
-    EXT(node,commodity,grade,year) =L= bound_extraction_up(node,commodity,grade,year) ;
-
-***
-* .. _equation_resource_constraint:
-*
-* Equation RESOURCE_CONSTRAINT
-* """"""""""""""""""""""""""""
-*
-* This constraint restricts that resource extraction in a year guarantees the "remaining resources" constraint,
-* i.e., only a given fraction of remaining resources can be extracted per year.
-*
-*  .. math::
-*     \text{EXT}_{n,c,g,y} \leq
-*     \text{resource_remaining}_{n,c,g,y} \cdot
-*         \Big( & \text{resource_volume}_{n,c,g} \\
-*               & - \sum_{y' < y} \text{duration_period}_{y'} \cdot \text{EXT}_{n,c,g,y'} \Big)
-*
-***
-RESOURCE_CONSTRAINT(node,commodity,grade,year)$( map_resource(node,commodity,grade,year)
-        AND resource_remaining(node,commodity,grade,year) )..
-* extraction per year
-    EXT(node,commodity,grade,year) =L=
-* remaining resources multiplied by remaining-resources-factor
-    resource_remaining(node,commodity,grade,year)
-    * ( resource_volume(node,commodity,grade)
-        - SUM(year2$( year_order(year2) < year_order(year) ),
-            duration_period(year2) * EXT(node,commodity,grade,year2) ) ) ;
-
-***
-* .. _equation_resource_horizon:
-*
-* Equation RESOURCE_HORIZON
-* """""""""""""""""""""""""
-* This constraint ensures that total resource extraction over the model horizon does not exceed the available resources.
-*
-*  .. math::
-*     \sum_{y} \text{duration_period}_{y} \cdot \text{EXT}_{n,c,g,y} \leq  \text{resource_volume}_{n,c,g}
-*
-***
-RESOURCE_HORIZON(node,commodity,grade)$( SUM(year$map_resource(node,commodity,grade,year), 1 ) )..
-    SUM(year, duration_period(year) * EXT(node,commodity,grade,year) ) =L= resource_volume(node,commodity,grade) ;
+*----------------------------------------------------------------------------------------------------------------------*
+* Include resources extraction module
+*----------------------------------------------------------------------------------------------------------------------*
+$INCLUDE MESSAGE/resources_extraction.gms
 
 *----------------------------------------------------------------------------------------------------------------------*
 ***
+* Constraints on commodities and stocks
+*
 * Constraints on commodities and stocks
 * ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
 *
