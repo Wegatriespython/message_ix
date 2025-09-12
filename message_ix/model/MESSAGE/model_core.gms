@@ -126,6 +126,7 @@ Variables
     COMMODITY_USE(node,commodity,level,year_all) total amount of a commodity & level that was used or consumed
 * nodal system costs over time
     COST_NODAL(node, year_all)                   system costs at the node level over time
+    OBJ_INV                                      total annualized investment costs
 * auxiliary variable for aggregate emissions by technology type and land-use model emulator
     EMISS(node,emission,type_tec,year_all)       aggregate emissions by technology type and land-use model emulator
 * auxiliary variable for left-hand side of relations (linear constraints)
@@ -250,6 +251,7 @@ Positive variables
 
 Equations
     OBJECTIVE                       objective value of the optimisation problem
+    OBJ_INV_ANNUAL                  annualized investment costs accounting
     COST_ACCOUNTING_NODAL           cost accounting at node level over time
     EXTRACTION_EQUIVALENCE          auxiliary equation to simplify the resource extraction formulation
     EXTRACTION_BOUND_UP             upper bound on extraction (by grade)
@@ -338,7 +340,47 @@ Equations
 *
 ***
 OBJECTIVE..
-    OBJ =E= SUM( (node,year), df_period(year) * COST_NODAL(node,year) ) ;
+    OBJ =E= SUM( (node,year), df_period(year) * COST_NODAL(node,year) ) + OBJ_INV ;
+
+***
+* Annualized investment costs accounting
+* --------------------------------------
+*
+* Accounting of annualized investment costs
+* ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+*
+* .. _equation_obj_inv_annual:
+*
+* Equation OBJ_INV_ANNUAL
+* """""""""""""""""""""""
+*
+* This equation calculates the total annualized investment costs by summing over all
+* periods the discounted annualized capital expenditures for all active capacity vintages.
+*
+* .. math::
+*    \text{OBJ_INV} = \sum_{n,t \in T^{inv},y} \text{df_period}_{y} \cdot
+*    \sum_{y^V : \text{map_tec_lifetime}(n,t,y^V,y)}
+*    \text{CAP}_{n,t,y^V,y} \cdot
+*    \text{inv_cost}_{n,t,y^V} \cdot \text{CRF}_{n,t,y^V}
+*
+***
+
+OBJ_INV_ANNUAL ..
+    OBJ_INV =E= SUM((node,inv_tec,year),
+        df_period(year) *
+        SUM(vintage$map_tec_lifetime(node,inv_tec,vintage,year),
+            CAP(node,inv_tec,vintage,year)
+          * inv_cost(node,inv_tec,vintage) * CRF(node,inv_tec,vintage)
+        )
+    )
+    + SUM((node,inv_tec,vintage,y_prev,y_)$map_cap_ret(node,inv_tec,vintage,y_prev,y_),
+        df_period(y_) *
+        ( CAP(node,inv_tec,vintage,y_prev) - CAP(node,inv_tec,vintage,y_) ) *
+        inv_cost(node,inv_tec,vintage) * CRF(node,inv_tec,vintage) *
+        SUM(y_all$( map_tec_lifetime(node,inv_tec,vintage,y_all) AND
+                   year_order(y_all) > year_order(y_) ),
+            df_period(y_all) / df_period(y_) )
+    );
 
 ***
 * Regional system cost accounting function
@@ -359,9 +401,7 @@ OBJECTIVE..
 * .. math::
 *    \text{COST_NODAL}_{n,y} & = \sum_{c,g} \ \text{resource_cost}_{n,c,g,y} \cdot \text{EXT}_{n,c,g,y} \\
 *      & + \sum_{t} \
-*          \bigg( \text{inv_cost}_{n,t,y} \cdot \text{construction_time_factor}_{n,t,y} \\
-*      & \quad \quad \quad \cdot \text{end_of_horizon_factor}_{n,t,y} \cdot \text{CAP_NEW}_{n,t,y} \\[4 pt]
-*      & \quad \quad + \sum_{y^V \leq y} \ \text{fix_cost}_{n,t,y^V,y} \cdot \text{CAP}_{n,t,y^V,y} \\
+*          \bigg( \sum_{y^V \leq y} \ \text{fix_cost}_{n,t,y^V,y} \cdot \text{CAP}_{n,t,y^V,y} \\
 *      & \quad \quad + \sum_{\substack{y^V \leq y \\ m,h}} \ \text{var_cost}_{n,t,y^V,y,m,h} \cdot \text{ACT}_{n,t,y^V,y,m,h} \\
 *      & \quad \quad + \Big( \text{abs_cost_new_capacity_soft_up}_{n,t,y} \\
 *      & \quad \quad \quad
@@ -391,11 +431,9 @@ COST_ACCOUNTING_NODAL(node, year)..
 * resource extraction costs
     SUM((commodity,grade)$( map_resource(node,commodity,grade,year) ),
          resource_cost(node,commodity,grade,year) * EXT(node,commodity,grade,year) )
-* technology capacity investment, maintainance, operational cost
+* technology capacity maintainance, operational cost (investment costs now annualized via OBJ_INV)
     + SUM((tec)$( map_tec(node,tec,year) ),
-            ( inv_cost(node,tec,year) * construction_time_factor(node,tec,year)
-                * end_of_horizon_factor(node,tec,year) * CAP_NEW(node,tec,year)
-            + SUM(vintage$( map_tec_lifetime(node,tec,vintage,year) ),
+            ( SUM(vintage$( map_tec_lifetime(node,tec,vintage,year) ),
                 fix_cost(node,tec,vintage,year) * CAP(node,tec,vintage,year) ) )$( inv_tec(tec) )
             + SUM((vintage,mode,time)$( map_tec_lifetime(node,tec,vintage,year) AND map_tec_act(node,tec,year,mode,time) ),
                 var_cost(node,tec,vintage,year,mode,time) * ACT(node,tec,vintage,year,mode,time) )

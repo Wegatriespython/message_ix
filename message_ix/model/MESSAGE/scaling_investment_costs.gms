@@ -158,6 +158,26 @@ end_of_horizon_factor(node,inv_tec,vintage)$( map_tec(node,inv_tec,vintage) ) =
 ***
 
 ***
+* Capital Recovery Factor (CRF) calculation
+* ------------------------------------------
+* The Capital Recovery Factor is used to annualize investment costs over the technical lifetime
+* of a technology, accounting for the interest rate in the vintage year.
+*
+* .. math::
+*    \text{CRF}_{n,t,v} = \begin{cases}
+*        \frac{\text{interestrate}_v}{1 - (1 + \text{interestrate}_v)^{-\text{technical_lifetime}_{n,t,v}}} & \text{if } \text{interestrate}_v > 0 \\
+*        \frac{1}{\text{technical_lifetime}_{n,t,v}} & \text{if } \text{interestrate}_v = 0
+*    \end{cases}
+***
+
+* Calculate CRF for all investment technologies
+CRF(node,inv_tec,vintage)$( map_tec(node,inv_tec,vintage) AND technical_lifetime(node,inv_tec,vintage) > 0 ) =
+* Case 1: interest rate > 0 - use standard capital recovery factor formula
+    ( interestrate(vintage) / (1 - power(1 + interestrate(vintage), -technical_lifetime(node,inv_tec,vintage))) )$( interestrate(vintage) > 0 )
+* Case 2: interest rate = 0 - simple equal annual payments
+    + ( 1 / technical_lifetime(node,inv_tec,vintage) )$( interestrate(vintage) = 0 ) ;
+
+***
 * Remaining installed capacity
 * ----------------------------
 * The model has to take into account that the technical lifetime of a technology may not coincide with the cumulative

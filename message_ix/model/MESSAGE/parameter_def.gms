@@ -322,6 +322,8 @@ Parameters
     fix_cost(node,tec,vintage,year_all)                 fixed costs per year (per unit of capacity maintained)
     var_cost(node,tec,vintage,year_all,mode,time)       variable costs of operation (per unit of capacity maintained)
     levelized_cost(node,tec,year_all,time)              levelized costs (per unit of new capacity)
+    
+    CRF(node,tec,vintage)                               capital recovery factor for annualizing investment costs
 
 * engineering parameters
     construction_time(node,tec,vintage)                     duration of construction of new capacity (in years)
