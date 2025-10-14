@@ -30,6 +30,14 @@ $EOLCOM #
 $INCLUDE MESSAGE/model_setup.gms
 
 *----------------------------------------------------------------------------------------------------------------------*
+* optional parameter search/calibration (if requested via GAMS command-line options)                                   *
+*----------------------------------------------------------------------------------------------------------------------*
+
+* Binary search for growth_activity_up parameter calibration
+* Activated by setting: --SEARCH_GROWTH_ACTIVITY_UP="1"
+$IF SET SEARCH_GROWTH_ACTIVITY_UP $INCLUDE MESSAGE/parameter_search_growth_activity_up.gms
+
+*----------------------------------------------------------------------------------------------------------------------*
 * solve statements (including the loop for myopic or rolling-horizon optimization)                                     *
 *----------------------------------------------------------------------------------------------------------------------*
 
