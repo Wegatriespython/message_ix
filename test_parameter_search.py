@@ -13,9 +13,10 @@ from message_ix.testing import make_westeros
 # Create a local test platform
 mp = Platform(name="local")
 
-# Create a Westeros scenario (simple MESSAGE test model)
-print("Creating Westeros scenario...")
-scen = make_westeros(mp, solve=False, quiet=False)
+# Create a Westeros scenario with 10 periods (simple MESSAGE test model)
+print("Creating Westeros scenario with 10 periods...")
+model_horizon = [700, 710, 720, 730, 740, 750, 760, 770, 780, 790]
+scen = make_westeros(mp, solve=False, quiet=False, model_horizon=model_horizon)
 
 # Modify demand to grow at 5% per year
 print("\nModifying demand to grow at 5% per year...")
@@ -34,30 +35,19 @@ with scen.transact("Set growing demand"):
     scen.add_par("demand", demand_df)
 
 # Add some growth_activity_up constraints to test the binary search
-print("\nAdding tight growth_activity_up constraint for coal_ppl...")
+print("\nAdding growth_activity_up constraints for all periods...")
 with scen.transact("Add growth_activity_up constraint"):
-    # Set wind growth to 0 - no growth allowed, forces coal to meet demand
-    scen.add_par(
-        "growth_activity_up", ["Westeros", "wind_ppl", 710, "year"], 0.0, "GWa"
-    )
-    scen.add_par(
-        "growth_activity_up", ["Westeros", "wind_ppl", 720, "year"], 0.0, "GWa"
-    )
+    # Set wind growth to 0 - forces coal to meet demand
+    for year in model_horizon:
+        scen.add_par(
+            "growth_activity_up", ["Westeros", "wind_ppl", year, "year"], 0.0, "GWa"
+        )
 
-    # Add a VERY tight growth constraint on coal power plants
-    # This should make the model infeasible, forcing binary search to find relaxation
-    scen.add_par(
-        "growth_activity_up",
-        ["Westeros", "coal_ppl", 710, "year"],
-        0.001,  # 0.1% growth limit - too tight, should be infeasible
-        "GWa",
-    )
-    scen.add_par(
-        "growth_activity_up",
-        ["Westeros", "coal_ppl", 720, "year"],
-        0.001,  # 0.1% growth limit - too tight, should be infeasible
-        "GWa",
-    )
+    # Add tight growth constraints on coal for Westeros (to be calibrated)
+    for year in model_horizon:
+        scen.add_par(
+            "growth_activity_up", ["Westeros", "coal_ppl", year, "year"], 0.001, "GWa"
+        )
 
 print(f"\nScenario: {scen.model}/{scen.scenario}")
 print("Growth activity up values:")
@@ -65,44 +55,53 @@ print(scen.par("growth_activity_up"))
 
 # Add binary search configuration using the new parameter approach
 print("\nConfiguring binary search via growth_activity_up_search parameter...")
+print(
+    "Searching for minimum feasible growth for Westeros coal across all 10 periods..."
+)
 with scen.transact("Add binary search configuration"):
     # First, add the search_config set elements
     scen.add_set("search_config", ["lo", "hi", "tol"])
 
-    # Define search bounds for specific (node, tec, year, time) tuples
-    search_df = pd.DataFrame(
-        {
-            "node_loc": [
-                "Westeros",
-                "Westeros",
-                "Westeros",
-                "Westeros",
-                "Westeros",
-                "Westeros",
-            ],
-            "technology": [
-                "coal_ppl",
-                "coal_ppl",
-                "coal_ppl",
-                "coal_ppl",
-                "coal_ppl",
-                "coal_ppl",
-            ],
-            "year_act": [710, 710, 710, 720, 720, 720],
-            "time": ["year", "year", "year", "year", "year", "year"],
-            "search_config": ["lo", "hi", "tol", "lo", "hi", "tol"],
-            "value": [
-                0.01,
-                1,
-                0.0001,
-                0.01,
-                1,
-                0.0001,
-            ],  # Search range: 0.1% to 1% with 0.01% tolerance
-            "unit": ["-", "-", "-", "-", "-", "-"],
-        }
-    )
+    # Define search bounds for Westeros coal across all 10 periods
+    # Each period gets lo, hi, tol entries
+    search_data = []
+    for year in model_horizon:
+        search_data.extend(
+            [
+                {
+                    "node_loc": "Westeros",
+                    "technology": "coal_ppl",
+                    "year_act": year,
+                    "time": "year",
+                    "search_config": "lo",
+                    "value": 0.001,
+                    "unit": "-",
+                },
+                {
+                    "node_loc": "Westeros",
+                    "technology": "coal_ppl",
+                    "year_act": year,
+                    "time": "year",
+                    "search_config": "hi",
+                    "value": 0.15,
+                    "unit": "-",
+                },
+                {
+                    "node_loc": "Westeros",
+                    "technology": "coal_ppl",
+                    "year_act": year,
+                    "time": "year",
+                    "search_config": "tol",
+                    "value": 0.001,
+                    "unit": "-",
+                },
+            ]
+        )
+
+    search_df = pd.DataFrame(search_data)
     scen.add_par("growth_activity_up_search", search_df)
+
+print(f"\nConfigured binary search for {len(model_horizon)} periods in Westeros")
 
 print("\nBinary search configuration added:")
 print(scen.par("growth_activity_up_search"))
@@ -122,10 +121,12 @@ print("=" * 80)
 
 # Check the results
 obj_val = scen.var("OBJ")
-if isinstance(obj_val, float):
-    print(f"\nObjective value: {obj_val:.2f}")
-else:
+if isinstance(obj_val, pd.DataFrame):
     print(f"\nObjective value: {obj_val['lvl'].values[0]:.2f}")
+elif isinstance(obj_val, dict):
+    print(f"\nObjective value: {obj_val['lvl']:.2f}")
+else:
+    print(f"\nObjective value: {obj_val:.2f}")
 
 # The growth_activity_up parameter should now contain the calibrated values
 print("\nCalibrated growth_activity_up values:")

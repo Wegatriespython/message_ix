@@ -29,8 +29,8 @@ Set
 
 Scalar search_lo, search_hi, search_tol, search_mid, search_best, is_feasible;
 Scalar iter_count, param_count, outer_iter, total_solves, phase1_complete;
-Scalar max_dual, dual_threshold, converged, global_lo, global_hi;
-Set search_iter /iter1*iter30/;
+Scalar max_dual, dual_threshold, converged, global_lo, global_hi, max_phase1_iter;
+Set search_iter /iter1*iter100/;
 Set outer_iter_set /outer1*outer20/;
 
 if(has_search_config > 0,
@@ -83,29 +83,42 @@ if(has_search_config > 0,
 
     fixed_dims(node,tec,year_all,time) = no;
 
-    phase1_complete = 0;
     outer_iter = 0;
     total_solves = 0;
     converged = 0;
+    max_phase1_iter = 100;
 
     put_utility 'log' /'========================================';
-    put_utility 'log' /'Phase 1: Global Tightening';
+    put_utility 'log' /'Iterative Phase 1 + Phase 2 Search';
     put_utility 'log' /'========================================';
-    put_utility 'log' /'Goal: Find a point where at least one constraint is binding';
     put_utility 'log' /'';
 
-    iter_count = 0;
-    search_lo = global_lo;
-    search_hi = global_hi;
-    search_best = global_hi;
+    loop(outer_iter_set$(not converged),
+        outer_iter = outer_iter + 1;
+        put_utility 'log' /'';
+        put_utility 'log' /'======== Major Iteration ' outer_iter:0:0 ' ========';
+        put_utility 'log' /'';
 
-    loop(search_iter$(search_hi - search_lo > search_tol AND not phase1_complete),
-        iter_count = iter_count + 1;
-        search_mid = (search_lo + search_hi) / 2;
+        put_utility 'log' /'--- Phase 1: Global Tightening on Unfixed Dimensions ---';
 
-        growth_activity_up(node,tec,year_all,time)$search_filter(node,tec,year_all,time) = search_mid;
+        phase1_complete = 0;
+        iter_count = 0;
+        search_lo = global_lo;
+        search_hi = global_hi;
+        search_best = global_hi;
 
-        put_utility 'log' /'  Global Iter ' iter_count:0:0 ': testing value=' search_mid:0:6;
+        loop(search_iter$(iter_count < max_phase1_iter AND not phase1_complete),
+            iter_count = iter_count + 1;
+            search_mid = (search_lo + search_hi) / 2;
+
+            growth_activity_up(node,tec,year_all,time)$(search_filter(node,tec,year_all,time)
+                                                         AND fixed_dims(node,tec,year_all,time)) =
+                current_value(node,tec,year_all,time);
+
+            growth_activity_up(node,tec,year_all,time)$(search_filter(node,tec,year_all,time)
+                                                         AND not fixed_dims(node,tec,year_all,time)) = search_mid;
+
+            put_utility 'log' /'  Global Iter ' iter_count:0:0 ': testing value=' search_mid:0:6;
 
         Solve MESSAGE_LP using LP minimizing OBJ;
         total_solves = total_solves + 1;
@@ -119,15 +132,17 @@ if(has_search_config > 0,
             constraint_dual(node,tec,year_all,time)$search_filter(node,tec,year_all,time) =
                 ACTIVITY_CONSTRAINT_UP.m(node,tec,year_all,time);
 
-            max_dual = smax((node,tec,year_all,time)$search_filter(node,tec,year_all,time),
+            max_dual = smax((node,tec,year_all,time)$(search_filter(node,tec,year_all,time)
+                                                       AND not fixed_dims(node,tec,year_all,time)),
                             abs(constraint_dual(node,tec,year_all,time)));
 
-            put_utility 'log' /'    FEASIBLE - max |dual|: ' max_dual:0:6;
+            put_utility 'log' /'    FEASIBLE - max |dual| on unfixed: ' max_dual:0:6;
 
             if(max_dual > dual_threshold,
                 search_best = search_mid;
-                current_value(node,tec,year_all,time)$search_filter(node,tec,year_all,time) = search_mid;
-                put_utility 'log' /'    At least one constraint binding - Phase 1 complete';
+                current_value(node,tec,year_all,time)$(search_filter(node,tec,year_all,time)
+                                                        AND not fixed_dims(node,tec,year_all,time)) = search_mid;
+                put_utility 'log' /'    At least one unfixed constraint binding - Phase 1 complete';
                 phase1_complete = 1;
             else
                 search_hi = search_mid;
@@ -138,33 +153,29 @@ if(has_search_config > 0,
             search_lo = search_mid;
             put_utility 'log' /'    INFEASIBLE - loosening';
         );
-    );
+        );
 
-    if(not phase1_complete,
+        if(not phase1_complete,
+            put_utility 'log' /'';
+            put_utility 'log' /'Phase 1: No binding constraints found in unfixed dimensions';
+            put_utility 'log' /'Converged - all unfixed dimensions at tightest feasible values';
+            current_value(node,tec,year_all,time)$(search_filter(node,tec,year_all,time)
+                                                    AND not fixed_dims(node,tec,year_all,time)) = search_best;
+            converged = 1;
+        );
+
+        if(converged,
+            break;
+        );
+
         put_utility 'log' /'';
-        put_utility 'log' /'Phase 1 reached tolerance without finding binding constraints';
-        put_utility 'log' /'Using tightest feasible point found';
-        current_value(node,tec,year_all,time)$search_filter(node,tec,year_all,time) = search_best;
-    );
+        put_utility 'log' /'Phase 1 complete after ' iter_count:0:0 ' iterations';
+        put_utility 'log' /'';
 
-    put_utility 'log' /'';
-    put_utility 'log' /'Phase 1 complete after ' iter_count:0:0 ' iterations';
-    put_utility 'log' /'Starting point for Phase 2: ' search_best:0:6;
-    put_utility 'log' /'';
-
-    put_utility 'log' /'========================================';
-    put_utility 'log' /'Phase 2: Dual-Guided Sequential Search';
-    put_utility 'log' /'========================================';
-    put_utility 'log' /'Goal: Tighten each bottleneck dimension independently';
-    put_utility 'log' /'';
-
-    loop(outer_iter_set$(not converged),
-        outer_iter = outer_iter + 1;
+        put_utility 'log' /'--- Phase 2: Tighten Bottleneck ---';
 
         growth_activity_up(node,tec,year_all,time)$search_filter(node,tec,year_all,time) =
             current_value(node,tec,year_all,time);
-
-        put_utility 'log' /'--- Outer Iteration ' outer_iter:0:0 ' ---';
 
         Solve MESSAGE_LP using LP minimizing OBJ;
         total_solves = total_solves + 1;
