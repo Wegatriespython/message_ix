@@ -8,7 +8,7 @@ put_utility 'log' /"+++ Importing data from '%in%'... +++ " ;
 * all sets and general parameters from the gdx file
 $GDXIN '%in%'
 $LOAD node, tec=technology, year_all=year, commodity, level, grade, mode, time, rating
-$LOAD emission, land_scenario, land_type, relation
+$LOAD emission, land_scenario, land_type, relation, search_config
 $LOAD level_resource, level_renewable
 $LOAD lvl_spatial, lvl_temporal, map_spatial_hierarchy, map_temporal_hierarchy
 $LOAD map_node, map_time, map_commodity, map_resource, map_stocks, map_tec, map_tec_time, map_tec_mode
@@ -63,6 +63,7 @@ Execute_load '%in%',
   flexibility_factor,
   growth_activity_lo,
   growth_activity_up,
+  growth_activity_up_search,
   growth_land_lo,
   growth_land_scen_lo,
   growth_land_scen_up,

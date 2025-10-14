@@ -443,7 +443,9 @@ Parameters
 
     initial_activity_lo(node,tec,year_all,time)    dynamic lower bound on activity (fixed initial term)
     growth_activity_lo(node,tec,year_all,time)     dynamic lower bound on activity (growth rate)
-    soft_activity_lo(node,tec,year_all,time)       soft relaxation of dynamic lower bound on activity (growth rate),
+    soft_activity_lo(node,tec,year_all,time)       soft relaxation of dynamic lower bound on activity (growth rate)
+
+    growth_activity_up_search(node,tec,year_all,time,search_config) binary search configuration for growth_activity_up
 
     # Auxiliaries for growth_new_capacity_up
     gncu_1(node,tec,year_all)                      Auxiliary for growth_new_capacity_up,
