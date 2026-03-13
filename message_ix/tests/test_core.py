@@ -147,6 +147,54 @@ class TestScenario:
             assert "'message_ix'.'3-" in result.stdout.decode()
             assert "'ixmp'.'3-" in result.stdout.decode()
 
+    def test_create_model_instance_defaults(
+        self,
+        dantzig_message_scenario: Scenario,
+        monkeypatch: pytest.MonkeyPatch,
+    ) -> None:
+        calls: dict[str, object] = {}
+
+        def fake_create_model_instance(self, **kwargs):
+            calls.update(kwargs)
+            return "mi", "ws"
+
+        monkeypatch.setattr(
+            ixmp.Scenario, "create_model_instance", fake_create_model_instance
+        )
+
+        assert ("mi", "ws") == dantzig_message_scenario.create_model_instance()
+        assert "MESSAGE" == calls["model"]
+        assert [
+            "demand_fixed",
+            "inv_cost",
+            "resource_cost",
+            "tax_emission",
+        ] == calls["modifiable_pars"]
+
+    def test_create_model_instance_normalizes_modifiable_pars(
+        self,
+        dantzig_message_scenario: Scenario,
+        monkeypatch: pytest.MonkeyPatch,
+    ) -> None:
+        calls: dict[str, object] = {}
+
+        def fake_create_model_instance(self, **kwargs):
+            calls.update(kwargs)
+            return "mi", "ws"
+
+        monkeypatch.setattr(
+            ixmp.Scenario, "create_model_instance", fake_create_model_instance
+        )
+
+        dantzig_message_scenario.create_model_instance(
+            modifiable_pars=["demand", "demand_fixed", "tax_emission"],
+            fixable_vars=["CAP_NEW"],
+            use_defaults=False,
+        )
+
+        assert ["demand_fixed", "tax_emission"] == calls["modifiable_pars"]
+        assert ["CAP_NEW"] == calls["fixable_vars"]
+
 
 @pytest.mark.skipif(not GHA, reason="Check for GitHub Actions workflows only")
 def test_backends_available() -> None:

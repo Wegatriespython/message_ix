@@ -18,49 +18,29 @@ from ixmp.util.ixmp4 import is_ixmp4backend
 
 log = logging.getLogger(__name__)
 
-#: Parameters that can be made modifiable in GamsModelInstance
-#: These are NOT used in conditional expressions ($) in GAMS code
+#: User-facing parameter names mapped to the corresponding GAMS modifier symbols.
+MODELINSTANCE_PARAMETER_ALIASES = {"demand": "demand_fixed"}
+
+#: Conservative default modifier set for GamsModelInstance.
+#: Parameters with helper-set gating or structure-changing effects are excluded.
 DEFAULT_MODIFIABLE_PARS = [
-    # Cost parameters
-    "inv_cost",
-    "fix_cost",
-    "var_cost",
-    "resource_cost",
-    # Technical coefficients
-    "input",
-    "output",
-    "technical_lifetime",
-    "construction_time",
-    # Bounds
-    "bound_activity_up",
-    "bound_activity_lo",
-    "bound_new_capacity_up",
-    "bound_new_capacity_lo",
-    "bound_total_capacity_up",
-    "bound_total_capacity_lo",
-    "initial_activity_up",
-    "initial_activity_lo",
-    "initial_new_capacity_up",
-    "initial_new_capacity_lo",
-    # Resource parameters
-    "resource_volume",
-    "resource_remaining",
-    # Demand and stocks
     "demand",
-    "stock",
-    # Emissions
-    "emission_factor",
-    "emission_scaling",
-    # Storage
-    "storage_initial",
-    "storage_self_discharge",
-    # Relations
-    "relation_upper",
-    "relation_lower",
-    "relation_activity",
-    "relation_new_capacity",
-    "relation_total_capacity",
+    "inv_cost",
+    "resource_cost",
+    "tax_emission",
 ]
+
+
+def _normalize_modifiable_pars(names: Sequence[str]) -> list[str]:
+    result = []
+
+    for name in names:
+        normalized = MODELINSTANCE_PARAMETER_ALIASES.get(name, name)
+        if normalized not in result:
+            result.append(normalized)
+
+    return result
+
 
 # Also print warnings to stderr
 _sh = logging.StreamHandler()
@@ -860,6 +840,11 @@ class Scenario(ixmp.Scenario):
         """
         if modifiable_pars is None and use_defaults:
             modifiable_pars = DEFAULT_MODIFIABLE_PARS
+        elif modifiable_pars is not None:
+            modifiable_pars = list(modifiable_pars)
+
+        if modifiable_pars is not None:
+            modifiable_pars = _normalize_modifiable_pars(modifiable_pars)
 
         return super().create_model_instance(
             model=model,
