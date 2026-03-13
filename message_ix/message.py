@@ -70,6 +70,30 @@ class MESSAGE(GAMSModel):
 
     keyword_to_solve_arg = [("cap_comm", _boollike, "MESSAGE_CAP_COMM")]
 
+    model_instance_parameter_aliases = {"demand_fixed": "demand"}
+
+    model_instance_empty_parameters = {
+        "fixed_extraction": 4,
+        "fixed_stock": 4,
+        "fixed_new_capacity": 3,
+        "fixed_capacity": 4,
+        "fixed_activity": 6,
+        "fixed_land": 3,
+    }
+
+    model_instance_fixable_vars = {
+        "CAP_NEW": (3, "Positive"),
+        "CAP": (4, "Positive"),
+        "ACT": (6, "Positive"),
+        "EXT": (4, "Positive"),
+        "STOCK": (4, "Positive"),
+        "LAND": (3, "Positive"),
+        "CAP_NEW_UP": (3, "Positive"),
+        "CAP_NEW_LO": (3, "Positive"),
+        "ACT_UP": (4, "Positive"),
+        "ACT_LO": (4, "Positive"),
+    }
+
     @staticmethod
     def enforce(scenario: "ixmp.Scenario") -> None:
         """Enforce data consistency in `scenario`."""
