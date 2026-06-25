@@ -308,6 +308,10 @@ Equations
     ACTIVITY_SOFT_CONSTRAINT_UP     bound on relaxation of the dynamic constraint on market penetration (upper bound)
     ACTIVITY_CONSTRAINT_LO          dynamic constraint on the market penetration of a technology activity (lower bound)
     ACTIVITY_SOFT_CONSTRAINT_LO     bound on relaxation of the dynamic constraint on market penetration (lower bound)
+    ACTIVITY_CONSTRAINT_UP_AGG      dynamic activity constraint aggregated over child time slices to the parent level (upper bound)
+    ACTIVITY_SOFT_CONSTRAINT_UP_AGG bound on relaxation of the annual-aggregated dynamic activity constraint (upper bound)
+    ACTIVITY_CONSTRAINT_LO_AGG      dynamic activity constraint aggregated over child time slices to the parent level (lower bound)
+    ACTIVITY_SOFT_CONSTRAINT_LO_AGG bound on relaxation of the annual-aggregated dynamic activity constraint (lower bound)
     EMISSION_EQUIVALENCE            auxiliary equation to simplify the notation of emissions
     EMISSION_CONSTRAINT             nodal-regional-global constraints on emissions (by category)
     LAND_CONSTRAINT                 constraint on total land use (linear combination of land scenarios adds up to 1)
@@ -1889,7 +1893,8 @@ NEW_CAPACITY_SOFT_CONSTRAINT_LO(node,inv_tec,year)$( soft_new_capacity_lo(node,i
 *
 ***
 ACTIVITY_CONSTRAINT_UP(node,tec,year,time)$( map_tec_time(node,tec,year,time)
-        AND is_dynamic_activity_up(node,tec,year,time) )..
+        AND is_dynamic_activity_up(node,tec,year,time)
+        AND NOT dynamic_activity_aggregate(node,tec) )..
 * actual activity (summed over modes)
     SUM((vintage,mode)$( map_tec_lifetime(node,tec,vintage,year) AND map_tec_mode(node,tec,year,mode) ),
             ACT(node,tec,vintage,year,mode,time) ) =L=
@@ -1930,7 +1935,8 @@ ACTIVITY_CONSTRAINT_UP(node,tec,year,time)$( map_tec_time(node,tec,year,time)
 *
 *
 ***
-ACTIVITY_SOFT_CONSTRAINT_UP(node,tec,year,time)$( soft_activity_up(node,tec,year,time) )..
+ACTIVITY_SOFT_CONSTRAINT_UP(node,tec,year,time)$( soft_activity_up(node,tec,year,time)
+        AND NOT dynamic_activity_aggregate(node,tec) )..
     ACT_UP(node,tec,year,time) =L=
         SUM((vintage,mode,year2)$( map_tec_lifetime(node,tec,vintage,year2) AND map_tec_act(node,tec,year2,mode,time)
                                    AND seq_period(year2,year) ),
@@ -1956,7 +1962,8 @@ ACTIVITY_SOFT_CONSTRAINT_UP(node,tec,year,time)$( soft_activity_up(node,tec,year
 *
 ***
 ACTIVITY_CONSTRAINT_LO(node,tec,year,time)$( map_tec_time(node,tec,year,time)
-        AND is_dynamic_activity_lo(node,tec,year,time) )..
+        AND is_dynamic_activity_lo(node,tec,year,time)
+        AND NOT dynamic_activity_aggregate(node,tec) )..
 * actual activity (summed over modes)
     SUM((vintage,mode)$( map_tec_lifetime(node,tec,vintage,year) AND map_tec_mode(node,tec,year,mode) ),
             ACT(node,tec,vintage,year,mode,time) ) =G=
@@ -1996,13 +2003,127 @@ ACTIVITY_CONSTRAINT_LO(node,tec,year,time)$( map_tec_time(node,tec,year,time)
 *                             + \sum_{m,y-1} \text{historical_activity}_{n^L,t,y-1,m,h} & \text{if } y = \text{'first_period'}
 *
 ***
-ACTIVITY_SOFT_CONSTRAINT_LO(node,tec,year,time)$( soft_activity_lo(node,tec,year,time) )..
+ACTIVITY_SOFT_CONSTRAINT_LO(node,tec,year,time)$( soft_activity_lo(node,tec,year,time)
+        AND NOT dynamic_activity_aggregate(node,tec) )..
     ACT_LO(node,tec,year,time) =L=
         SUM((vintage,mode,year2)$( map_tec_lifetime(node,tec,vintage,year2) AND map_tec_act(node,tec,year2,mode,time)
                                    AND seq_period(year2,year) ),
             ACT(node,tec,vintage,year2,mode,time) ) $ (NOT first_period(year))
       + SUM((mode,year_all2)$( seq_period(year_all2,year) ),
             historical_activity(node,tec,year_all2,mode,time) ) $ first_period(year)
+;
+
+***
+* Annual-aggregated dynamic activity constraints
+* ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+*
+* For technologies flagged in ``dynamic_activity_aggregate``, the dynamic activity-growth
+* constraints bind on activity summed over the child time slices of the parent ``time`` level,
+* rather than independently per time slice. The growth parameters (``growth_activity_up/lo``,
+* ``initial_activity_up/lo``, ``soft_activity_up/lo``) are read at the parent ``time`` at which
+* they are defined, and the activity and previous-period anchor terms aggregate the child slices
+* ``time2`` via ``map_time(time, time2)``, mirroring the temporal-hierarchy aggregation of the
+* commodity balance. The per-slice variants above are disabled for these technologies through the
+* ``NOT dynamic_activity_aggregate`` condition, so each flagged technology is governed by exactly
+* one of the two forms. Technologies absent from the set are unaffected.
+*
+* .. _equation_activity_constraint_up_agg:
+*
+* Equation ACTIVITY_CONSTRAINT_UP_AGG
+* """""""""""""""""""""""""""""""""""
+***
+ACTIVITY_CONSTRAINT_UP_AGG(node,tec,year,time)$( is_dynamic_activity_up(node,tec,year,time)
+        AND dynamic_activity_aggregate(node,tec) )..
+* actual activity (summed over modes and child time slices of the parent 'time')
+    SUM((vintage,mode,time2)$( map_tec_lifetime(node,tec,vintage,year) AND map_tec_mode(node,tec,year,mode)
+                               AND map_time(time,time2) AND map_tec_time(node,tec,year,time2) ),
+            ACT(node,tec,vintage,year,mode,time2) ) =L=
+* initial activity (compounded over the duration of the period)
+        initial_activity_up(node,tec,year,time) * (
+            ( ( POWER( 1 + growth_activity_up(node,tec,year,time) , duration_period(year) ) - 1 )
+                / growth_activity_up(node,tec,year,time) )$( growth_activity_up(node,tec,year,time) )
+              + ( duration_period(year) )$( NOT growth_activity_up(node,tec,year,time) )
+            )
+* growth of 'capital stock' from previous period (aggregated over child time slices)
+        + SUM((year_all2)$( seq_period(year_all2,year) ),
+            SUM((vintage,mode,time2)$( map_tec_lifetime(node,tec,vintage,year_all2) AND map_tec_mode(node,tec,year_all2,mode)
+                                 AND model_horizon(year_all2) AND map_time(time,time2) AND map_tec_time(node,tec,year_all2,time2) ),
+                        ACT(node,tec,vintage,year_all2,mode,time2) )
+                + SUM((mode,time2)$( map_time(time,time2) ), historical_activity(node,tec,year_all2,mode,time2) )
+                )
+            * POWER( 1 + growth_activity_up(node,tec,year,time) , duration_period(year) )
+* 'soft' relaxation of dynamic constraints
+        + ( ACT_UP(node,tec,year,time)
+                * ( POWER( 1 + soft_activity_up(node,tec,year,time) , duration_period(year) ) - 1 )
+            )$( soft_activity_up(node,tec,year,time) )
+* optional relaxation for calibration and debugging
+%SLACK_ACT_DYNAMIC_UP% + SLACK_ACT_DYNAMIC_UP(node,tec,year,time)
+;
+
+***
+* .. _equation_activity_soft_constraint_up_agg:
+*
+* Equation ACTIVITY_SOFT_CONSTRAINT_UP_AGG
+* """"""""""""""""""""""""""""""""""""""""
+***
+ACTIVITY_SOFT_CONSTRAINT_UP_AGG(node,tec,year,time)$( soft_activity_up(node,tec,year,time)
+        AND dynamic_activity_aggregate(node,tec) )..
+    ACT_UP(node,tec,year,time) =L=
+        SUM((vintage,mode,year2,time2)$( map_tec_lifetime(node,tec,vintage,year2) AND map_tec_act(node,tec,year2,mode,time2)
+                                   AND seq_period(year2,year) AND map_time(time,time2) ),
+            ACT(node,tec,vintage,year2,mode,time2) ) $ (NOT first_period(year))
+      + SUM((mode,year_all2,time2)$( seq_period(year_all2,year) AND map_time(time,time2) ),
+            historical_activity(node,tec,year_all2,mode,time2) ) $ first_period(year)
+;
+
+***
+* .. _equation_activity_constraint_lo_agg:
+*
+* Equation ACTIVITY_CONSTRAINT_LO_AGG
+* """""""""""""""""""""""""""""""""""
+***
+ACTIVITY_CONSTRAINT_LO_AGG(node,tec,year,time)$( is_dynamic_activity_lo(node,tec,year,time)
+        AND dynamic_activity_aggregate(node,tec) )..
+* actual activity (summed over modes and child time slices of the parent 'time')
+    SUM((vintage,mode,time2)$( map_tec_lifetime(node,tec,vintage,year) AND map_tec_mode(node,tec,year,mode)
+                               AND map_time(time,time2) AND map_tec_time(node,tec,year,time2) ),
+            ACT(node,tec,vintage,year,mode,time2) ) =G=
+* initial activity (compounded over the duration of the period)
+        - initial_activity_lo(node,tec,year,time) * (
+            ( ( POWER( 1 + growth_activity_lo(node,tec,year,time) , duration_period(year) ) - 1 )
+                / growth_activity_lo(node,tec,year,time) )$( growth_activity_lo(node,tec,year,time) )
+              + ( duration_period(year) )$( NOT growth_activity_lo(node,tec,year,time) )
+            )
+* growth of 'capital stock' from previous period (aggregated over child time slices)
+        + SUM((year_all2)$( seq_period(year_all2,year) ),
+            SUM((vintage,mode,time2)$( map_tec_lifetime(node,tec,vintage,year_all2) AND map_tec_mode(node,tec,year_all2,mode)
+                                 AND model_horizon(year_all2) AND map_time(time,time2) AND map_tec_time(node,tec,year_all2,time2) ),
+                        ACT(node,tec,vintage,year_all2,mode,time2) )
+                + SUM((mode,time2)$( map_time(time,time2) ), historical_activity(node,tec,year_all2,mode,time2) )
+                )
+            * POWER( 1 + growth_activity_lo(node,tec,year,time) , duration_period(year) )
+* 'soft' relaxation of dynamic constraints
+        - ( ACT_LO(node,tec,year,time)
+            * ( POWER( 1 + soft_activity_lo(node,tec,year,time) , duration_period(year) ) - 1 )
+            )$( soft_activity_lo(node,tec,year,time) )
+* optional relaxation for calibration and debugging
+%SLACK_ACT_DYNAMIC_LO% - SLACK_ACT_DYNAMIC_LO(node,tec,year,time)
+;
+
+***
+* .. _equation_activity_soft_constraint_lo_agg:
+*
+* Equation ACTIVITY_SOFT_CONSTRAINT_LO_AGG
+* """"""""""""""""""""""""""""""""""""""""
+***
+ACTIVITY_SOFT_CONSTRAINT_LO_AGG(node,tec,year,time)$( soft_activity_lo(node,tec,year,time)
+        AND dynamic_activity_aggregate(node,tec) )..
+    ACT_LO(node,tec,year,time) =L=
+        SUM((vintage,mode,year2,time2)$( map_tec_lifetime(node,tec,vintage,year2) AND map_tec_act(node,tec,year2,mode,time2)
+                                   AND seq_period(year2,year) AND map_time(time,time2) ),
+            ACT(node,tec,vintage,year2,mode,time2) ) $ (NOT first_period(year))
+      + SUM((mode,year_all2,time2)$( seq_period(year_all2,year) AND map_time(time,time2) ),
+            historical_activity(node,tec,year_all2,mode,time2) ) $ first_period(year)
 ;
 
 *----------------------------------------------------------------------------------------------------------------------*
