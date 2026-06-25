@@ -467,7 +467,9 @@ COST_ACCOUNTING_NODAL(node, year)..
 %SLACK_CAP_TOTAL_BOUND_UP%  + 10 * SLACK_CAP_TOTAL_BOUND_UP(node,tec,year)
 %SLACK_CAP_TOTAL_BOUND_LO%  + 10 * SLACK_CAP_TOTAL_BOUND_LO(node,tec,year)
         ) * ABS( 1000 + inv_cost(node,tec,year) ) )
-    + SUM((tec,time)$( map_tec_time(node,tec,year,time) ), ( 0
+    + SUM((tec,time)$( map_tec_time(node,tec,year,time)
+            OR ( dynamic_activity_aggregate(node,tec)
+                AND ( is_dynamic_activity_up(node,tec,year,time) OR is_dynamic_activity_lo(node,tec,year,time) ) ) ), ( 0
 %SLACK_ACT_BOUND_UP%   + 10 * SUM(mode$( map_tec_act(node,tec,year,mode,time) ), SLACK_ACT_BOUND_UP(node,tec,year,mode,time) )
 %SLACK_ACT_BOUND_LO%   + 10 * SUM(mode$( map_tec_act(node,tec,year,mode,time) ), SLACK_ACT_BOUND_LO(node,tec,year,mode,time) )
 %SLACK_ACT_DYNAMIC_UP% + 10 * SLACK_ACT_DYNAMIC_UP(node,tec,year,time)

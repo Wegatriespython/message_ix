@@ -322,6 +322,31 @@ def test_activity_constraint_up_aggregate_soft_cost(test_mp: Platform) -> None:
     )
 
 
+def test_activity_constraint_up_aggregate_slack_cost(test_mp: Platform) -> None:
+    techs = (("cheap_ppl", CHEAP_VAR_COST),)
+    demand = {"h1": PEAK_DEMAND, "h2": OFF_DEMAND}
+    scen = _build_baseline(
+        test_mp,
+        "up_aggregate_slack_priced",
+        demand_by_slice=demand,
+        technologies=techs,
+    )
+    _add_historical_activity(scen, "cheap_ppl", HIST_PER_SLICE)
+    _add_growth(scen, "growth_activity_up", "cheap_ppl", aggregate=True)
+    scen.solve(
+        quiet=True,
+        gams_args=['--SLACK_ACT_DYNAMIC_UP=""'],
+        var_list=["SLACK_ACT_DYNAMIC_UP"],
+    )
+
+    annual_cap = len(TIMES) * HIST_PER_SLICE
+    required_slack = PEAK_DEMAND + OFF_DEMAND - annual_cap
+    assert _act_total(scen.var("SLACK_ACT_DYNAMIC_UP"), "cheap_ppl") == pytest.approx(
+        required_slack, rel=1e-3
+    )
+    assert float(scen.var("OBJ")["lvl"]) > 1e8
+
+
 def test_activity_constraint_up_aggregate_ignores_non_operating_history(
     test_mp: Platform,
 ) -> None:
