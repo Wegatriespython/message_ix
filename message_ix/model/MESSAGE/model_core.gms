@@ -431,7 +431,9 @@ COST_ACCOUNTING_NODAL(node, year)..
         )
 * additional cost terms (penalty) for relaxation of 'soft' dynamic activity constraints
     + SUM((tec)$( map_tec(node,tec,year) ),
-        SUM(time$( map_tec_time(node,tec,year,time) ),
+        SUM(time$( map_tec_time(node,tec,year,time)
+                OR ( dynamic_activity_aggregate(node,tec)
+                    AND ( soft_activity_up(node,tec,year,time) OR soft_activity_lo(node,tec,year,time) ) ) ),
             ( ( abs_cost_activity_soft_up(node,tec,year,time)
                 + level_cost_activity_soft_up(node,tec,year,time) * levelized_cost(node,tec,year,time)
                 ) * ACT_UP(node,tec,year,time) )$( soft_activity_up(node,tec,year,time) )
@@ -2049,7 +2051,8 @@ ACTIVITY_CONSTRAINT_UP_AGG(node,tec,year,time)$( is_dynamic_activity_up(node,tec
             SUM((vintage,mode,time2)$( map_tec_lifetime(node,tec,vintage,year_all2) AND map_tec_mode(node,tec,year_all2,mode)
                                  AND model_horizon(year_all2) AND map_time(time,time2) AND map_tec_time(node,tec,year_all2,time2) ),
                         ACT(node,tec,vintage,year_all2,mode,time2) )
-                + SUM((mode,time2)$( map_time(time,time2) ), historical_activity(node,tec,year_all2,mode,time2) )
+                + SUM((mode,time2)$( map_time(time,time2) AND map_tec_time(node,tec,year,time2) ),
+                    historical_activity(node,tec,year_all2,mode,time2) )
                 )
             * POWER( 1 + growth_activity_up(node,tec,year,time) , duration_period(year) )
 * 'soft' relaxation of dynamic constraints
@@ -2072,7 +2075,8 @@ ACTIVITY_SOFT_CONSTRAINT_UP_AGG(node,tec,year,time)$( soft_activity_up(node,tec,
         SUM((vintage,mode,year2,time2)$( map_tec_lifetime(node,tec,vintage,year2) AND map_tec_act(node,tec,year2,mode,time2)
                                    AND seq_period(year2,year) AND map_time(time,time2) ),
             ACT(node,tec,vintage,year2,mode,time2) ) $ (NOT first_period(year))
-      + SUM((mode,year_all2,time2)$( seq_period(year_all2,year) AND map_time(time,time2) ),
+      + SUM((mode,year_all2,time2)$( seq_period(year_all2,year)
+                AND map_time(time,time2) AND map_tec_time(node,tec,year,time2) ),
             historical_activity(node,tec,year_all2,mode,time2) ) $ first_period(year)
 ;
 
@@ -2099,7 +2103,8 @@ ACTIVITY_CONSTRAINT_LO_AGG(node,tec,year,time)$( is_dynamic_activity_lo(node,tec
             SUM((vintage,mode,time2)$( map_tec_lifetime(node,tec,vintage,year_all2) AND map_tec_mode(node,tec,year_all2,mode)
                                  AND model_horizon(year_all2) AND map_time(time,time2) AND map_tec_time(node,tec,year_all2,time2) ),
                         ACT(node,tec,vintage,year_all2,mode,time2) )
-                + SUM((mode,time2)$( map_time(time,time2) ), historical_activity(node,tec,year_all2,mode,time2) )
+                + SUM((mode,time2)$( map_time(time,time2) AND map_tec_time(node,tec,year,time2) ),
+                    historical_activity(node,tec,year_all2,mode,time2) )
                 )
             * POWER( 1 + growth_activity_lo(node,tec,year,time) , duration_period(year) )
 * 'soft' relaxation of dynamic constraints
@@ -2122,7 +2127,8 @@ ACTIVITY_SOFT_CONSTRAINT_LO_AGG(node,tec,year,time)$( soft_activity_lo(node,tec,
         SUM((vintage,mode,year2,time2)$( map_tec_lifetime(node,tec,vintage,year2) AND map_tec_act(node,tec,year2,mode,time2)
                                    AND seq_period(year2,year) AND map_time(time,time2) ),
             ACT(node,tec,vintage,year2,mode,time2) ) $ (NOT first_period(year))
-      + SUM((mode,year_all2,time2)$( seq_period(year_all2,year) AND map_time(time,time2) ),
+      + SUM((mode,year_all2,time2)$( seq_period(year_all2,year)
+                AND map_time(time,time2) AND map_tec_time(node,tec,year,time2) ),
             historical_activity(node,tec,year_all2,mode,time2) ) $ first_period(year)
 ;
 

@@ -192,6 +192,34 @@ def _add_growth(
             scen.add_set("dynamic_activity_aggregate", [NODE, technology])
 
 
+def _remove_technology_time(scen: Scenario, technology: str, time: str) -> None:
+    with scen.transact("remove technology time slice"):
+        for par_name in ["output", "var_cost", "capacity_factor"]:
+            rows = scen.par(par_name, filters={"technology": technology, "time": time})
+            if not rows.empty:
+                scen.remove_par(par_name, rows)
+
+
+def _add_soft_activity_up(
+    scen: Scenario, technology: str, *, soft_rate: float, abs_cost: float
+) -> None:
+    common = dict(node_loc=NODE, technology=technology, year_act=YEAR, time="year")
+    with scen.transact("soft activity upper bound"):
+        scen.add_par(
+            "soft_activity_up",
+            make_df("soft_activity_up", **common, value=soft_rate, unit="-"),
+        )
+        scen.add_par(
+            "abs_cost_activity_soft_up",
+            make_df(
+                "abs_cost_activity_soft_up",
+                **common,
+                value=abs_cost,
+                unit="USD/GWa",
+            ),
+        )
+
+
 def test_activity_constraint_up_aggregate_vs_per_slice(test_mp: Platform) -> None:
     """Upper growth constraint: per-slice (default) vs annual-aggregated.
 
@@ -249,6 +277,84 @@ def test_activity_constraint_up_aggregate_vs_per_slice(test_mp: Platform) -> Non
 
     # Same data, same objective scaling: the aggregated cap is the looser one.
     assert float(aggregate.var("OBJ")["lvl"]) < float(per_slice.var("OBJ")["lvl"])
+
+
+def test_activity_constraint_up_aggregate_soft_cost(test_mp: Platform) -> None:
+    techs = (("cheap_ppl", CHEAP_VAR_COST),)
+    demand = {"h1": PEAK_DEMAND, "h2": OFF_DEMAND}
+    soft_rate = 1.0
+
+    free_relaxation = _build_baseline(
+        test_mp,
+        "up_aggregate_soft_free",
+        demand_by_slice=demand,
+        technologies=techs,
+    )
+    _add_historical_activity(free_relaxation, "cheap_ppl", HIST_PER_SLICE)
+    _add_growth(free_relaxation, "growth_activity_up", "cheap_ppl", aggregate=True)
+    _add_soft_activity_up(
+        free_relaxation, "cheap_ppl", soft_rate=soft_rate, abs_cost=0.0
+    )
+    free_relaxation.solve(quiet=True, var_list=["ACT_UP"])
+
+    priced_relaxation = _build_baseline(
+        test_mp,
+        "up_aggregate_soft_priced",
+        demand_by_slice=demand,
+        technologies=techs,
+    )
+    _add_historical_activity(priced_relaxation, "cheap_ppl", HIST_PER_SLICE)
+    _add_growth(priced_relaxation, "growth_activity_up", "cheap_ppl", aggregate=True)
+    _add_soft_activity_up(
+        priced_relaxation, "cheap_ppl", soft_rate=soft_rate, abs_cost=1000.0
+    )
+    priced_relaxation.solve(quiet=True, var_list=["ACT_UP"])
+
+    annual_cap = len(TIMES) * HIST_PER_SLICE
+    required_relaxation = (PEAK_DEMAND + OFF_DEMAND - annual_cap) / (
+        (1 + soft_rate) ** (YEAR - HIST_YEAR) - 1
+    )
+    assert _act_total(priced_relaxation.var("ACT_UP"), "cheap_ppl") == pytest.approx(
+        required_relaxation, rel=1e-3
+    )
+    assert float(priced_relaxation.var("OBJ")["lvl"]) > float(
+        free_relaxation.var("OBJ")["lvl"]
+    )
+
+
+def test_activity_constraint_up_aggregate_ignores_non_operating_history(
+    test_mp: Platform,
+) -> None:
+    techs = (("cheap_ppl", CHEAP_VAR_COST), ("expensive_ppl", EXPENSIVE_VAR_COST))
+    scen = _build_baseline(
+        test_mp,
+        "up_aggregate_operating_history",
+        demand_by_slice={"h1": PEAK_DEMAND},
+        technologies=techs,
+    )
+    _remove_technology_time(scen, "cheap_ppl", "h2")
+    with scen.transact("historical activity"):
+        scen.add_par(
+            "historical_activity",
+            make_df(
+                "historical_activity",
+                node_loc=NODE,
+                technology="cheap_ppl",
+                year_act=HIST_YEAR,
+                mode=MODE,
+                time=TIMES,
+                value=[HIST_PER_SLICE, 100.0],
+                unit="GWa",
+            ),
+        )
+    _add_growth(scen, "growth_activity_up", "cheap_ppl", aggregate=True)
+    scen.solve(quiet=True)
+
+    act = scen.var("ACT")
+    assert _act_at(act, "cheap_ppl", "h1") == pytest.approx(HIST_PER_SLICE, rel=1e-3)
+    assert _act_at(act, "expensive_ppl", "h1") == pytest.approx(
+        PEAK_DEMAND - HIST_PER_SLICE, rel=1e-3
+    )
 
 
 def test_activity_constraint_lo_aggregate_vs_per_slice(test_mp: Platform) -> None:
