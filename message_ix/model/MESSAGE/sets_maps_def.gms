@@ -410,6 +410,7 @@ Sets
     map_tec_time(node,tec,year_all,time)            mapping of technology to temporal dissagregation (time)
     map_tec_mode(node,tec,year_all,mode)            mapping of technology to modes
     map_tec_act(node,tec,year_all,mode,time)        mapping of technology to modes AND temporal dissagregation
+    dynamic_activity_aggregate(node,tec)            flag for technologies whose dynamic activity-growth constraint binds on annual-aggregated activity (summed over child time slices) instead of per time slice
     map_tec_addon(tec,type_addon)                   mapping of types of add-on technologies to the underlying parent technology
     map_tec_storage(node,tec,mode,tec2,mode2,level,commodity,lvl_temporal)  mapping of charge-discharging technologies to their respective storage container tec and level-commodity
 
