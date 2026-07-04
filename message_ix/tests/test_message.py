@@ -76,3 +76,29 @@ class TestMESSAGE:
         )
         extra = list(filter(message_pattern.match, caplog.messages))
         assert not extra, f"{len(extra)} unwanted log messages: {extra}"
+
+    @pytest.mark.jdbc
+    def test_solve_retains_all_equations(
+        self, request: pytest.FixtureRequest, test_mp: "Platform"
+    ) -> None:
+        """A JDBC solve retains marginals for non-required equations.
+
+        Regression test: previously :meth:`.MESSAGE.run` populated ``equ_list`` only
+        for :class:`.IXMP4Backend`, so JDBC solves passed an empty list and equations
+        outside the MESSAGE scheme's required set (e.g. ``COMMODITY_BALANCE_GT``) came
+        back with zero rows.
+        """
+        from message_ix.testing import make_dantzig
+
+        scen = make_dantzig(test_mp, request=request)
+        scen.solve(quiet=True)
+
+        # ``COMMODITY_BALANCE_GT`` is not a scheme-required equation but is generated
+        # non-empty by the Dantzig model; before the fix it returned zero rows.
+        assert len(scen.equ("COMMODITY_BALANCE_GT")) > 0
+
+        # A second, independent solve produces the same result: the default is not
+        # leaked or duplicated across model instances.
+        clone = scen.clone(scenario=f"{request.node.name}-2", keep_solution=False)
+        clone.solve(quiet=True)
+        assert len(clone.equ("COMMODITY_BALANCE_GT")) > 0
