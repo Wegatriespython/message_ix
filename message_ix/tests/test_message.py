@@ -97,6 +97,10 @@ class TestMESSAGE:
         # non-empty by the Dantzig model; before the fix it returned zero rows.
         assert len(scen.equ("COMMODITY_BALANCE_GT")) > 0
 
+        # EMISSION_EQUIVALENCE is deliberately excluded from the default import
+        # list; its marginals remain empty after a solve.
+        assert len(scen.equ("EMISSION_EQUIVALENCE")) == 0
+
         # A second, independent solve produces the same result: the default is not
         # leaked or duplicated across model instances.
         clone = scen.clone(scenario=f"{request.node.name}-2", keep_solution=False)
