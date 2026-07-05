@@ -266,15 +266,22 @@ class MESSAGE(GAMSModel):
         else:
             # JDBC backend: unless the user requested a specific set, import all
             # equations initialized on the scenario, so that marginals for
-            # non-required equations (e.g. EMISSION_EQUIVALENCE) are retained
-            # after the solve rather than coming back empty. The Java importer
-            # always appends the scheme's required items, so an explicit
-            # user-supplied equ_list is never narrowed by this default. Restore
-            # the original value afterward so a reused model instance does not
-            # leak this default into a later scenario with different equations.
+            # non-required equations are retained after the solve rather than
+            # coming back empty. EMISSION_EQUIVALENCE is excluded: it is an
+            # accounting identity whose marginals carry no diagnostic value,
+            # and its records are ~75% of all equation rows in a global
+            # scenario. The Java importer always appends the scheme's required
+            # items, so an explicit user-supplied equ_list is never narrowed by
+            # this default. Restore the original value afterward so a reused
+            # model instance does not leak this default into a later scenario
+            # with different equations.
             original_equ_list = self.equ_list
             if not self.equ_list:
-                self.equ_list = scenario.equ_list()
+                self.equ_list = [
+                    name
+                    for name in scenario.equ_list()
+                    if name != "EMISSION_EQUIVALENCE"
+                ]
             try:
                 super().run(scenario)
             finally:
